@@ -16,6 +16,34 @@ def test_allowed_origins_preserves_local_and_parses_vercel_urls():
     assert "https://campusfix-git-feature.vercel.app" in origins
 
 
+def test_allowed_origins_includes_configured_dev_tunnel_and_preflights():
+    frontend_origin = "https://qrfmnq8l-5173.inc1.devtunnels.ms"
+    origins = allowed_origins(frontend_origin)
+
+    assert all(origin in origins for origin in LOCAL_ORIGINS)
+    assert frontend_origin in origins
+
+    application = FastAPI()
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
+    client = TestClient(application)
+    response = client.options(
+        "/",
+        headers={
+            "Origin": frontend_origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == frontend_origin
+
+
 def test_cors_preflight_allows_configured_origin_only():
     application = FastAPI()
     application.add_middleware(

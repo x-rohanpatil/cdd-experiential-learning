@@ -21,18 +21,85 @@ Smart Campus Maintenance and Infrastructure Management System.
 
 API Documentation: http://127.0.0.1:8000/docs
 
+## Production schema migration
+From a PowerShell session in the `backend/` directory, run:
+
+```powershell
+.\scripts\migrate_production.ps1
+```
+
+The script asks for the Supabase production `DATABASE_URL` with a secure
+prompt. Alternatively, set `CAMPUSFIX_SUPABASE_DATABASE_URL` in the current
+PowerShell process before running it. It accepts only the Supabase Session
+Pooler hostname on port 5432, requires PostgreSQL credentials, a database
+name, and TLS (`sslmode=require`, `verify-ca`, or `verify-full`), and suppresses
+migration output to avoid exposing connection details. The migration performs
+a read-only schema preflight before changes. Missing foreign keys are reported
+for manual review; duplicate normalized USNs prevent it from adding USN
+uniqueness. This script only migrates the schema; it does not import student
+records.
+
+## Transfer local admission records
+After validating the Supabase schema and its unique `students.usn` constraint,
+run the local-to-Supabase transfer from `backend/`:
+
+```powershell
+python .\transfer_local_students.py
+```
+
+This is a read-only dry run by default. It expects 1,168 local rows, validates
+that USNs are unique after normalization, counts Supabase records, and reports
+conflicting registration statuses by count. It reports only counts, never
+student credentials or password hashes. The source
+and target URLs are requested with hidden prompts unless
+`CAMPUSFIX_SOURCE_DATABASE_URL` and `CAMPUSFIX_SUPABASE_DATABASE_URL` are set
+in the current process. The source must be local/Docker PostgreSQL and the
+target must be the Supabase Session Pooler on port 5432 with
+`sslmode=require` or stricter. The script prompts for the local Docker
+PostgreSQL URL first, then the production Supabase URL. Enter each URL only
+when the script prompts; do not paste it at the PowerShell command prompt.
+Plain `postgresql://` URLs are normalized to the installed psycopg 3 driver;
+`postgresql+psycopg://` is also accepted.
+
+Only after reviewing the dry-run counts, explicitly request the insert-only
+transfer:
+
+```powershell
+python .\transfer_local_students.py --apply
+```
+
+The transfer copies USN, name, department, and password hash (without printing
+or exporting hashes) so registration status is preserved for new rows. Existing
+Supabase USNs are left unchanged, including any registration-status conflicts.
+The insert transaction verifies imported/skipped and final record counts and
+rolls back if its count checks fail. Parent names and other fields are not
+selected. If the source count has intentionally changed, review it first and
+specify the expected count explicitly with `--expected-count`.
+
 ## Containerized deployment
 From the repository root, Compose builds the FastAPI backend and the production
 Vite frontend, and starts them alongside PostgreSQL. The frontend is available
 at `http://localhost:5173`, the API at `http://localhost:8000`, and PostgreSQL
-at `localhost:5432`.
+at `localhost:5432`. All three host ports are bound to `127.0.0.1`; PostgreSQL
+is not exposed on external network interfaces and must not be forwarded through
+a Dev Tunnel.
 
 The root `.env` supplies the existing PostgreSQL password. The backend's
 private `backend/.env` is passed to the container at runtime for application
 settings but is excluded from the image. Compose overrides its local
-`DATABASE_URL` with the internal `db:5432` address. PostgreSQL continues using
-the existing `postgres_data` volume; do not remove that volume when managing
-the stack.
+`DATABASE_URL` with the internal `db:5432` address. Set `VITE_API_URL` in the
+root `.env` to the backend Dev Tunnel URL and `CORS_ORIGINS` to the exact
+frontend Dev Tunnel origin. `VITE_API_URL` is passed as a Docker build argument
+and embedded in the generated Vite bundle; changing it requires rebuilding the
+frontend image. The defaults in `.env.example` contain the currently provided
+Dev Tunnel URLs. PostgreSQL continues using the existing `postgres_data`
+volume; do not remove that volume when managing the stack.
+
+For Vite development outside Docker, `frontend/.env` should set `VITE_API_URL`
+to the backend Dev Tunnel URL. Vite listens on `0.0.0.0:5173` and allows the
+configured Dev Tunnel frontend hostname. FastAPI listens on `0.0.0.0:8000`
+inside its container; its CORS middleware accepts the exact configured tunnel
+origin and existing localhost development origins.
 
 ## Import Admission Records
 From the `backend/` directory, validate the PDF without writing to the database:
