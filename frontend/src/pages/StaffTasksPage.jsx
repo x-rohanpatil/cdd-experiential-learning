@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
 import { ComplaintCard } from '../components/ComplaintCard.jsx'
 import ComplaintFilters from '../components/ComplaintFilters.jsx'
+import ImageUploadField from '../components/ImageUploadField.jsx'
 import { ClipboardCheck } from 'lucide-react'
 import { filterComplaints } from '../utils/complaints.js'
 import {
@@ -51,7 +52,7 @@ function StaffTasksPage() {
     const photo = photos[task.id]
     const note = notes[task.id]?.trim()
     if (!photo || !note) {
-      setError('Add an after photo and resolution note before marking the task resolved.')
+      setError('Add an after photo and a short note about the repair.')
       return
     }
     setBusyTask(task.id)
@@ -95,17 +96,25 @@ function StaffTasksPage() {
             {task.status !== 'Closed' && task.status !== 'Resolved' && (
               <div className="task-actions">
                 <button className="button button--secondary" disabled={busyTask === task.id} type="button" onClick={() => updateStatus(task, 'In Progress')}>Start / continue work</button>
+                <ImageUploadField
+                  id={`after-photo-${task.id}`}
+                  label="After photo"
+                  required
+                  value={photos[task.id] ?? null}
+                  onChange={(file) => setPhotos((current) => ({ ...current, [task.id]: file }))}
+                />
                 <label className="form-field">
-                  <span>After photo</span>
-                  <input accept="image/jpeg,image/png,image/webp" type="file" onChange={(event) => {
-                    setPhotos((current) => ({ ...current, [task.id]: event.target.files?.[0] }))
-                  }} />
-                </label>
-                <label className="form-field">
-                  <span>Resolution note</span>
-                  <textarea maxLength="2000" value={notes[task.id] ?? ''} onChange={(event) => {
-                    setNotes((current) => ({ ...current, [task.id]: event.target.value }))
-                  }} />
+                  <span>What did you fix? <span className="feedback-optional">(required)</span></span>
+                  <input
+                    aria-required="true"
+                    maxLength="300"
+                    placeholder="e.g. Replaced the broken light bulb"
+                    type="text"
+                    value={notes[task.id] ?? ''}
+                    onChange={(event) => {
+                      setNotes((current) => ({ ...current, [task.id]: event.target.value }))
+                    }}
+                  />
                 </label>
                 <button className="button button--primary" disabled={busyTask === task.id} type="button" onClick={() => resolve(task)}>{busyTask === task.id ? 'Updating…' : 'Mark resolved'}</button>
               </div>

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Camera, Check, Sparkles } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Check, Sparkles } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
+import ImageUploadField from '../components/ImageUploadField.jsx'
 import {
   analyzeComplaint,
   createComplaint,
@@ -33,7 +34,6 @@ function ReportPage() {
   const [locationError, setLocationError] = useState('')
   const [busy, setBusy] = useState(false)
   const [isLoadingLocations, setIsLoadingLocations] = useState(true)
-  const photoPreview = useMemo(() => photo ? URL.createObjectURL(photo) : '', [photo])
 
   useEffect(() => {
     getLocations()
@@ -48,11 +48,6 @@ function ReportPage() {
       })
       .finally(() => setIsLoadingLocations(false))
   }, [searchParams])
-
-  useEffect(() => {
-    if (!photoPreview) return undefined
-    return () => URL.revokeObjectURL(photoPreview)
-  }, [photoPreview])
 
   function updateField(event) {
     const { name, value } = event.target
@@ -158,18 +153,15 @@ function ReportPage() {
             )}
           </label>
           {locationError && <p className="form-message form-message--error" role="status">{locationError} You can enter the location manually.</p>}
-          <label className="form-field">
-            <span>Photo <span className="field-hint">Optional · JPEG, PNG, or WebP · Max 8 MB</span></span>
-            <span className="file-drop">
-              <Camera size={19} aria-hidden="true" />
-              <span>{photo ? photo.name : 'Add a photo of the issue'}</span>
-              <input accept="image/jpeg,image/png,image/webp" type="file" onChange={(event) => {
-                setPhoto(event.target.files?.[0] ?? null)
-                setSuggested(false)
-              }} />
-            </span>
-          </label>
-          {photoPreview && <img className="report-photo-preview" src={photoPreview} alt="Preview of the selected issue" />}
+          <ImageUploadField
+            id="report-issue-photo"
+            label="Photo of the issue (optional)"
+            value={photo}
+            onChange={(file) => {
+              setPhoto(file)
+              setSuggested(false)
+            }}
+          />
         </section>
 
         <section className="report-section report-section--suggestions">

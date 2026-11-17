@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -357,6 +359,124 @@ def test_admin_routes_require_admin_role(client):
     student_headers = _student_headers(client, "TEST001")
     forbidden = client.get("/admin/complaints", headers=student_headers)
     assert forbidden.status_code == 403
+
+
+def test_building_analytics_aggregates_location_and_resolution_data(client):
+    registration = client.post(
+        "/students/register",
+        json={"usn": "TEST001", "password": "Test@12345"},
+    )
+    assert registration.status_code == 200
+    student_id = registration.json()["id"]
+    student_headers = _student_headers(client, "TEST001")
+    admin_headers = _admin_headers(client)
+    mapped_location = client.post(
+        "/admin/locations",
+        headers=admin_headers,
+        json={
+            "name": "Library Media Desk",
+            "building_key": "library",
+            "floor": "2",
+        },
+    )
+    assert mapped_location.status_code == 200
+
+    def create_complaint(title, category, location):
+        response = client.post(
+            f"/complaints?student_id={student_id}",
+            headers=student_headers,
+            json={
+                "title": title,
+                "description": "A demo request for analytics testing.",
+                "category": category,
+                "location": location,
+                "priority": "medium",
+            },
+        )
+        assert response.status_code == 200
+        return response.json()["id"]
+
+    create_complaint("Room light issue", "Electrical", "Block A, Floor 1, Room 102")
+    create_complaint("Media desk network", "Network", "Library Media Desk")
+    resolved_id = create_complaint("Library tap repair", "Plumbing", "Library, Floor 1, Room 10")
+    unmapped_resolved_id = create_complaint("Outdoor bench repair", "Furniture", "Outdoor sports field")
+    create_complaint("Remote location issue", "Other", "Outdoor sports field")
+
+    database = app.dependency_overrides[get_db]()
+    db = next(database)
+    try:
+        reference_time = datetime.now(timezone.utc)
+        resolved = db.get(models.Complaint, resolved_id)
+        resolved.status = "Resolved"
+        resolved.created_at = reference_time - timedelta(hours=5)
+        resolved.resolved_at = reference_time - timedelta(hours=3)
+        unmapped_resolved = db.get(models.Complaint, unmapped_resolved_id)
+        unmapped_resolved.status = "Closed"
+        unmapped_resolved.created_at = reference_time - timedelta(hours=7)
+        unmapped_resolved.resolved_at = reference_time - timedelta(hours=3)
+        db.commit()
+    finally:
+        database.close()
+
+    analytics = client.get("/admin/analytics/buildings", headers=admin_headers)
+    assert analytics.status_code == 200
+    payload = analytics.json()
+    academic = next(item for item in payload["buildings"] if item["key"] == "academic")
+    library = next(item for item in payload["buildings"] if item["key"] == "library")
+    academic_floors = {item["floor"]: item["open_complaint_count"] for item in academic["floor_counts"]}
+    library_floors = {item["floor"]: item["open_complaint_count"] for item in library["floor_counts"]}
+
+    assert academic["open_complaint_count"] == 1
+    assert academic_floors["1"] == 1
+    assert academic["category_counts"] == [
+        {"category": "Electrical", "open_complaint_count": 1},
+    ]
+    assert library["open_complaint_count"] == 1
+    assert library_floors["2"] == 1
+    assert library["average_resolution_hours"] == 2
+    assert payload["totals"] == {
+        "open_complaints": 3,
+        "mapped_open_complaints": 2,
+        "unmapped_open_complaints": 1,
+        "average_resolution_hours": 3,
+    }
+
+
+def test_location_mapping_validation_and_admin_permissions(client):
+    assert client.get("/admin/analytics/buildings").status_code == 401
+    registration = client.post(
+        "/students/register",
+        json={"usn": "TEST001", "password": "Test@12345"},
+    )
+    assert registration.status_code == 200
+    student_headers = _student_headers(client, "TEST001")
+    assert client.get(
+        "/admin/analytics/buildings",
+        headers=student_headers,
+    ).status_code == 403
+
+    admin_headers = _admin_headers(client)
+    invalid_mapping = client.post(
+        "/admin/locations",
+        headers=admin_headers,
+        json={"name": "Invalid Floor", "building_key": "library", "floor": "9"},
+    )
+    assert invalid_mapping.status_code == 400
+    location = client.post(
+        "/admin/locations",
+        headers=admin_headers,
+        json={"name": "Unmapped Room"},
+    )
+    assert location.status_code == 200
+    updated = client.patch(
+        f"/admin/locations/{location.json()['id']}/mapping",
+        headers=admin_headers,
+        json={"building_key": "engineering", "floor": "3"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["building_key"] == "engineering"
+    assert updated.json()["floor"] == "3"
+    assert client.get("/admin/locations", headers=admin_headers).json()["locations"][0]["building_key"] == "engineering"
 
 
 def test_complaint_photo_access_is_limited_to_owner(client):

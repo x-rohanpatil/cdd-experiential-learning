@@ -121,6 +121,8 @@ class Location(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(150), nullable=False, unique=True)
     details = Column(Text, nullable=True)
+    building_key = Column(String(50), nullable=True)
+    floor = Column(String(40), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 

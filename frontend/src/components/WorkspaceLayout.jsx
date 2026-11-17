@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Bell,
+  Building2,
   ClipboardList,
   LayoutDashboard,
   LogOut,
@@ -41,7 +42,7 @@ function WorkspaceLayout({ title, children }) {
   }
 
   const roleLinks = auth?.role === 'admin'
-    ? [['/admin', 'Overview', LayoutDashboard], ['/admin/qr-codes', 'Locations', QrCode]]
+    ? [['/admin', 'Overview', LayoutDashboard], ['/admin/campus-3d', 'Campus 3D', Building2], ['/admin/qr-codes', 'Locations', QrCode]]
     : auth?.role === 'staff'
       ? [['/staff/tasks', 'My tasks', Wrench]]
       : [

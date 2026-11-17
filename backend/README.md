@@ -21,6 +21,37 @@ Smart Campus Maintenance and Infrastructure Management System.
 
 API Documentation: http://127.0.0.1:8000/docs
 
+## Admin Campus 3D
+The admin portal includes a lazy-loaded Campus 3D view at `/admin/campus-3d`.
+Building geometry, floors, and legacy complaint-location aliases are configured
+in `app/campus_buildings.json`; replace the example names and positions with
+your campus map before using it operationally. Open-complaint counts use live
+complaint data. Administrators can map existing QR locations to a configured
+building and floor from **Locations**. The analytics endpoint is
+`GET /admin/analytics/buildings` and is restricted to administrators.
+
+The additive migration adds nullable `building_key` and `floor` fields to
+existing QR locations. Apply it locally before using location mapping:
+
+```powershell
+python -m app.migrate
+```
+
+Campus 3D can use a 2D building table when WebGL is not available. To prepare
+demo complaint data, run this from `backend/`:
+
+```powershell
+python seed_campus_demo.py --count 36
+python seed_campus_demo.py --count 36 --apply
+```
+
+The first command is a dry run and makes no database changes. `--apply`
+inserts only missing demo records and is restricted to a PostgreSQL database
+whose host is `localhost`, `127.0.0.1`, or `::1`; it does not delete or update
+records. The script refuses remote database hosts. Demo complaints are marked
+with a `[Demo]` title and a stable description marker so rerunning the seed is
+safe.
+
 ## Production schema migration
 From a PowerShell session in the `backend/` directory, run:
 
@@ -159,6 +190,10 @@ unset because they are not established by the admission PDF.
 - `GET /notifications` and `PATCH /notifications/{id}/read` — in-app notices.
 - `GET /media/{filename}` — role/ownership-checked complaint photo.
 - `GET /locations`, `GET/POST /admin/locations` — QR location records.
+- `PATCH /admin/locations/{location_id}/mapping` — map a QR location to a
+  configured campus building and floor.
+- `GET /admin/analytics/buildings` — admin-only live complaint analytics for
+  configured buildings, floors, categories, and resolution times.
 - `POST /admin/staff/accounts` — create a password-enabled staff account.
 - `GET /sla-config` — current category SLA hours.
 - `GET /admin/departments/counts` — department student counts.

@@ -25,6 +25,8 @@ SAFE_ADDITIVE_COLUMNS = {
     ("students", "password_hash"): "VARCHAR(255)",
     ("staff", "phone"): "VARCHAR(15)",
     ("staff", "password_hash"): "VARCHAR(255)",
+    ("locations", "building_key"): "VARCHAR(50)",
+    ("locations", "floor"): "VARCHAR(40)",
 }
 SAFE_ADDITIVE_COLUMNS.update({
     ("complaints", name): definition

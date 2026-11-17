@@ -100,6 +100,13 @@ class VerificationRequest(BaseModel):
 class LocationCreate(BaseModel):
     name: str = Field(min_length=1, max_length=150)
     details: str | None = Field(default=None, max_length=1000)
+    building_key: str | None = Field(default=None, max_length=50)
+    floor: str | None = Field(default=None, max_length=40)
+
+
+class LocationMappingUpdate(BaseModel):
+    building_key: str | None = Field(default=None, max_length=50)
+    floor: str | None = Field(default=None, max_length=40)
 
 
 class NotificationResponse(BaseModel):

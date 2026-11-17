@@ -132,6 +132,12 @@ export const getLocations = () => api.get('/locations')
 
 export const getAdminLocations = () => api.get('/admin/locations')
 
+export const getAdminBuildingAnalytics = () =>
+  api.get('/admin/analytics/buildings')
+
+export const updateLocationMapping = (locationId, mapping) =>
+  api.patch(`/admin/locations/${locationId}/mapping`, mapping)
+
 export const createLocation = (location) =>
   api.post('/admin/locations', location)
 
