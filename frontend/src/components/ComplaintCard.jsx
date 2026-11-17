@@ -1,4 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { ArrowUpRight, MapPin } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { getComplaintPhoto } from '../services/api.js'
 
 let clockTimestamp = new Date().getTime()
@@ -74,7 +76,7 @@ export function ComplaintCard({ complaint, children }) {
       <div className="complaint-card__header">
         <div>
           <p className="eyebrow">Complaint #{complaint.id}</p>
-          <h2>{complaint.title}</h2>
+          <h2><Link className="complaint-card__title" to={`/complaints/${complaint.id}`}>{complaint.title}</Link></h2>
         </div>
         <SlaBadge dueAt={complaint.due_at} />
       </div>
@@ -82,8 +84,8 @@ export function ComplaintCard({ complaint, children }) {
       <div className="complaint-meta">
         <span>{complaint.category}</span>
         <span className={`priority priority--${complaint.priority}`}>{complaint.priority}</span>
-        <span>{complaint.status}</span>
-        <span>{complaint.location}</span>
+        <span className={`status-badge status-badge--${complaint.status.toLowerCase().replaceAll(' ', '-')}`}>{complaint.status}</span>
+        <span className="complaint-meta__location"><MapPin size={14} aria-hidden="true" />{complaint.location}</span>
       </div>
       <div className="complaint-photos">
         <PrivatePhoto filename={complaint.before_photo_path} label="Before" />
@@ -91,6 +93,11 @@ export function ComplaintCard({ complaint, children }) {
       </div>
       {complaint.resolution_note && <p className="resolution-note">{complaint.resolution_note}</p>}
       {children}
+      <Link className="complaint-card__details" to={`/complaints/${complaint.id}`}>
+        View complaint <ArrowUpRight size={15} aria-hidden="true" />
+      </Link>
     </article>
   )
 }
+
+export default ComplaintCard

@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.activity import record_complaint_activity
 from app.admin import router as admin_router
 from app.ai import categorize_complaint
 from app.auth import hash_password, verify_password
@@ -234,6 +235,16 @@ def _create_complaint(
     )
     try:
         db.add(row)
+        db.flush()
+        record_complaint_activity(
+            db,
+            row.id,
+            kind="submitted",
+            actor_role="student",
+            message="Your request was submitted.",
+            to_status="Reported",
+            created_at=now,
+        )
         db.commit()
         db.refresh(row)
         return row
@@ -306,6 +317,130 @@ def get_complaints(
 ):
     complaints = db.query(models.Complaint).order_by(models.Complaint.created_at.desc()).all()
     return {"total": len(complaints), "complaints": complaints}
+
+
+@app.get(
+    "/complaints/{complaint_id}/activity",
+    response_model=list[schemas.ComplaintActivityResponse],
+)
+def get_complaint_activity(
+    complaint_id: int,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_roles("student", "staff", "admin")),
+):
+    complaint = db.get(models.Complaint, complaint_id)
+    if complaint is None or (
+        principal.role == "student" and complaint.student_id != principal.user_id
+    ) or (
+        principal.role == "staff" and complaint.staff_id != principal.user_id
+    ):
+        raise HTTPException(status_code=404, detail="Complaint not found")
+
+    return (
+        db.query(models.ComplaintActivity)
+        .filter(models.ComplaintActivity.complaint_id == complaint_id)
+        .order_by(models.ComplaintActivity.created_at, models.ComplaintActivity.id)
+        .all()
+    )
+
+
+def _student_confirmed_closure(db: Session, complaint_id: int) -> bool:
+    latest_closure = (
+        db.query(models.ComplaintActivity.actor_role)
+        .filter(
+            models.ComplaintActivity.complaint_id == complaint_id,
+            models.ComplaintActivity.to_status == "Closed",
+        )
+        .order_by(
+            models.ComplaintActivity.created_at.desc(),
+            models.ComplaintActivity.id.desc(),
+        )
+        .first()
+    )
+    return latest_closure is not None and latest_closure.actor_role == "student"
+
+
+@app.get(
+    "/complaints/{complaint_id}/feedback",
+    response_model=schemas.ComplaintFeedbackStatus,
+)
+def get_complaint_feedback(
+    complaint_id: int,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_roles("student", "admin")),
+):
+    complaint = db.get(models.Complaint, complaint_id)
+    if complaint is None or (
+        principal.role == "student" and complaint.student_id != principal.user_id
+    ):
+        raise HTTPException(status_code=404, detail="Complaint not found")
+
+    feedback = (
+        db.query(models.ComplaintFeedback)
+        .filter(models.ComplaintFeedback.complaint_id == complaint_id)
+        .first()
+    )
+    return {
+        "eligible": (
+            principal.role == "student"
+            and complaint.status == "Closed"
+            and _student_confirmed_closure(db, complaint_id)
+        ),
+        "feedback": feedback,
+    }
+
+
+@app.post(
+    "/complaints/{complaint_id}/feedback",
+    response_model=schemas.ComplaintFeedbackResponse,
+    status_code=201,
+)
+def submit_complaint_feedback(
+    complaint_id: int,
+    request: schemas.ComplaintFeedbackCreate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_roles("student")),
+):
+    complaint = (
+        db.query(models.Complaint)
+        .filter(
+            models.Complaint.id == complaint_id,
+            models.Complaint.student_id == principal.user_id,
+        )
+        .with_for_update()
+        .first()
+    )
+    if complaint is None:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+    if complaint.status != "Closed" or not _student_confirmed_closure(db, complaint_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Feedback is available after you confirm the repair.",
+        )
+    existing = (
+        db.query(models.ComplaintFeedback)
+        .filter(models.ComplaintFeedback.complaint_id == complaint_id)
+        .first()
+    )
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="Feedback has already been submitted.")
+
+    feedback = models.ComplaintFeedback(
+        complaint_id=complaint_id,
+        rating=request.rating,
+        comment=request.comment,
+    )
+    db.add(feedback)
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Feedback has already been submitted.",
+        ) from error
+    db.refresh(feedback)
+    return feedback
 
 
 @app.get("/students/{student_id}/complaints")
@@ -387,7 +522,23 @@ async def staff_update_status(
 
     new_photo_path = save_image(*photo_data) if photo_data[0] and photo_data[1] else None
     now = datetime.now(timezone.utc)
+    previous_status = complaint.status
     complaint.status = status
+    if previous_status != status:
+        record_complaint_activity(
+            db,
+            complaint.id,
+            kind="status_change",
+            actor_role="staff",
+            message=(
+                "Work has started on this request."
+                if status == "In Progress"
+                else "The repair was marked complete. Please confirm it works."
+            ),
+            from_status=previous_status,
+            to_status=status,
+            created_at=now,
+        )
     if status == "Resolved":
         complaint.after_photo_path = new_photo_path
         complaint.resolution_note = note.strip()
@@ -437,6 +588,7 @@ def verify_resolution(
     if complaint is None:
         raise HTTPException(status_code=404, detail="Complaint awaiting verification not found")
     now = datetime.now(timezone.utc)
+    previous_status = complaint.status
     verification_deadline = complaint.verification_deadline
     if verification_deadline and verification_deadline.tzinfo is None:
         verification_deadline = verification_deadline.replace(tzinfo=timezone.utc)
@@ -460,6 +612,28 @@ def verify_resolution(
         complaint.priority = PRIORITY_ORDER[
             min(PRIORITY_ORDER.index(current_priority) + 1, len(PRIORITY_ORDER) - 1)
         ]
+    record_complaint_activity(
+        db,
+        complaint.id,
+        kind="status_change",
+        actor_role=(
+            "system"
+            if verification_deadline and verification_deadline <= now
+            else "student"
+        ),
+        message=(
+            "Closed after the 48-hour confirmation period."
+            if verification_deadline and verification_deadline <= now
+            else (
+                "You confirmed that the repair is complete."
+                if request.action == "confirm"
+                else "You asked the maintenance team to take another look."
+            )
+        ),
+        from_status=previous_status,
+        to_status=complaint.status,
+        created_at=now,
+    )
     db.commit()
     db.refresh(complaint)
     return {"complaint_id": complaint.id, "status": complaint.status, "priority": complaint.priority}

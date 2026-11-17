@@ -3,6 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.activity import record_complaint_activity
 from app.auth import hash_password
 from app.database import get_db
 from app.notifications import add_notification
@@ -53,7 +54,18 @@ def update_complaint_status(
             status_code=409,
             detail="Assign the complaint to a staff member before setting Assigned",
         )
+    previous_status = complaint.status
     complaint.status = status
+    if previous_status != status:
+        record_complaint_activity(
+            db,
+            complaint.id,
+            kind="status_change",
+            actor_role="admin",
+            message=f"An administrator updated the status to {status}.",
+            from_status=previous_status,
+            to_status=status,
+        )
     db.commit()
     db.refresh(complaint)
     return {
@@ -198,8 +210,18 @@ def assign_complaint(
     if not staff:
         raise HTTPException(status_code=404, detail="Staff not found")
 
+    previous_status = complaint.status
     complaint.staff_id = staff.id
     complaint.status = "Assigned"
+    record_complaint_activity(
+        db,
+        complaint.id,
+        kind="assignment",
+        actor_role="admin",
+        message="Assigned to the maintenance team.",
+        from_status=previous_status,
+        to_status="Assigned",
+    )
     add_notification(
         db,
         target_role="staff",

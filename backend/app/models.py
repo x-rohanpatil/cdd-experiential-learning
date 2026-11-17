@@ -3,6 +3,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -53,6 +54,39 @@ class Complaint(Base):
     verification_deadline = Column(DateTime(timezone=True), nullable=True)
     closed_at = Column(DateTime(timezone=True), nullable=True)
     student = relationship("Student", back_populates="complaints")
+
+
+class ComplaintActivity(Base):
+    __tablename__ = "complaint_activity"
+    __table_args__ = (
+        Index(
+            "ix_complaint_activity_complaint_created",
+            "complaint_id",
+            "created_at",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    complaint_id = Column(Integer, ForeignKey("complaints.id"), nullable=False)
+    kind = Column(String(30), nullable=False)
+    actor_role = Column(String(20), nullable=False)
+    message = Column(Text, nullable=False)
+    from_status = Column(String(30), nullable=True)
+    to_status = Column(String(30), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class ComplaintFeedback(Base):
+    __tablename__ = "complaint_feedback"
+    __table_args__ = (
+        UniqueConstraint("complaint_id", name="uq_complaint_feedback_complaint"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    complaint_id = Column(Integer, ForeignKey("complaints.id"), nullable=False)
+    rating = Column(Integer, nullable=False)
+    comment = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class Notification(Base):

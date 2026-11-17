@@ -72,6 +72,15 @@ export const getStudentComplaints = (studentId) =>
 
 export const getAdminComplaints = () => api.get('/admin/complaints')
 
+export const getComplaintActivity = (complaintId) =>
+  api.get(`/complaints/${complaintId}/activity`)
+
+export const getComplaintFeedback = (complaintId) =>
+  api.get(`/complaints/${complaintId}/feedback`)
+
+export const submitComplaintFeedback = (complaintId, feedback) =>
+  api.post(`/complaints/${complaintId}/feedback`, feedback)
+
 export const updateAdminComplaintStatus = (complaintId, status) =>
   api.patch(`/admin/complaints/${complaintId}/status`, null, {
     params: { status },

@@ -41,6 +41,44 @@ class ComplaintResponse(BaseModel):
     closed_at: datetime | None = None
 
 
+class ComplaintActivityResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    kind: str
+    actor_role: str
+    message: str
+    from_status: str | None = None
+    to_status: str | None = None
+    created_at: datetime
+
+
+class ComplaintFeedbackCreate(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("comment")
+    @classmethod
+    def normalize_comment(cls, value: str | None) -> str | None:
+        normalized = value.strip() if value else None
+        return normalized or None
+
+
+class ComplaintFeedbackResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    complaint_id: int
+    rating: int
+    comment: str | None = None
+    created_at: datetime
+
+
+class ComplaintFeedbackStatus(BaseModel):
+    eligible: bool
+    feedback: ComplaintFeedbackResponse | None = None
+
+
 class LoginRequest(BaseModel):
     role: Literal["admin", "staff"]
     username: str

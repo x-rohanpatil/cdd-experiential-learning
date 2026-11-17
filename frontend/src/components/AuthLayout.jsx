@@ -4,7 +4,7 @@ function AuthLayout({ children, pageClassName = '' }) {
   return (
     <main className={`auth-shell ${pageClassName}`}>
       <section className="auth-brand" aria-label="CampusFix">
-        <Link className="brand-lockup" to="/login" aria-label="CampusFix home">
+        <Link className="brand-lockup" to="/" aria-label="CampusFix home">
           <span className="brand-mark">CF</span>
           <span className="brand-name">CampusFix</span>
         </Link>

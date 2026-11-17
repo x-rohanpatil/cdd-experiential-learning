@@ -152,6 +152,10 @@ unset because they are not established by the admission PDF.
 - `POST /complaints/with-photo` — submit with a before photo.
 - `POST /students/{student_id}/complaints/{complaint_id}/verification` — confirm
   or reopen a proof-of-fix request.
+- `GET /complaints/{complaint_id}/activity` — chronological request updates,
+  visible to the owner, assigned staff member, and admins.
+- `GET/POST /complaints/{complaint_id}/feedback` — owner-only feedback after
+  student-confirmed closure; admins can read submitted feedback.
 - `GET /notifications` and `PATCH /notifications/{id}/read` — in-app notices.
 - `GET /media/{filename}` — role/ownership-checked complaint photo.
 - `GET /locations`, `GET/POST /admin/locations` — QR location records.

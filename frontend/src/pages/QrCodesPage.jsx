@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { MapPinPlus } from 'lucide-react'
 import QRCode from 'qrcode'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
 import {
@@ -13,6 +14,8 @@ function QrCodesPage() {
   const [name, setName] = useState('')
   const [details, setDetails] = useState('')
   const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
 
   async function loadLocations() {
     const { data } = await getAdminLocations()
@@ -33,11 +36,13 @@ function QrCodesPage() {
     Promise.resolve()
       .then(loadLocations)
       .catch((requestError) => setError(getApiErrorMessage(requestError, 'Unable to load locations.')))
+      .finally(() => setIsLoading(false))
   }, [])
 
   async function addLocation(event) {
     event.preventDefault()
     setError('')
+    setIsSaving(true)
     try {
       await createLocation({ name, details: details || null })
       setName('')
@@ -45,6 +50,8 @@ function QrCodesPage() {
       await loadLocations()
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, 'Unable to create location.'))
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -58,7 +65,10 @@ function QrCodesPage() {
   return (
     <WorkspaceLayout title="Location QR codes">
       <form className="workspace-panel workspace-form location-form" onSubmit={addLocation}>
-        <h2>Create a location or asset</h2>
+        <div className="report-section__heading">
+          <span className="report-section__number"><MapPinPlus size={15} aria-hidden="true" /></span>
+          <div><h2>Create a location or asset</h2><p>Generate a QR code that links directly to the issue report.</p></div>
+        </div>
         <label className="form-field">
           <span>Name</span>
           <input maxLength="150" required value={name} onChange={(event) => setName(event.target.value)} placeholder="Room 204 Projector" />
@@ -68,9 +78,10 @@ function QrCodesPage() {
           <textarea maxLength="1000" value={details} onChange={(event) => setDetails(event.target.value)} />
         </label>
         {error && <p className="form-message form-message--error" role="alert">{error}</p>}
-        <button className="auth-submit" type="submit">Add location</button>
+        <button className="button button--primary" disabled={isSaving} type="submit">{isSaving ? 'Creating…' : 'Add location'}</button>
       </form>
       <div className="qr-grid">
+        {isLoading && <p className="workspace-empty">Loading campus locations…</p>}
         {locations.map((location) => (
           <article className="workspace-panel qr-card" key={location.id}>
             <div className="qr-card__body">
@@ -82,12 +93,13 @@ function QrCodesPage() {
               {codes[location.id] && <img src={codes[location.id]} alt={`Report QR code for ${location.name}`} />}
             </div>
             <div className="qr-actions">
-              <button className="secondary-button" type="button" onClick={() => download(location)}>Download PNG</button>
-              <button className="secondary-button" type="button" onClick={() => window.print()}>Print</button>
+              <button className="button button--secondary" disabled={!codes[location.id]} type="button" onClick={() => download(location)}>Download PNG</button>
+              <button className="button button--secondary" type="button" onClick={() => window.print()}>Print</button>
             </div>
           </article>
         ))}
       </div>
+      {!isLoading && locations.length === 0 && !error && <p className="workspace-empty">No campus locations have been added yet.</p>}
     </WorkspaceLayout>
   )
 }

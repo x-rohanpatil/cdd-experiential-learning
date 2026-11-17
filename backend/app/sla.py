@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from app import models
+from app.activity import record_complaint_activity
 from app.notifications import add_notification
 
 SLA_HOURS = {
@@ -100,7 +101,18 @@ def run_sla_cycle(db: Session, now: datetime | None = None) -> None:
         .all()
     )
     for complaint in auto_close:
+        previous_status = complaint.status
         complaint.status = "Closed"
         complaint.closed_at = now
+        record_complaint_activity(
+            db,
+            complaint.id,
+            kind="status_change",
+            actor_role="system",
+            message="Closed after the 48-hour confirmation period.",
+            from_status=previous_status,
+            to_status="Closed",
+            created_at=now,
+        )
 
     db.commit()

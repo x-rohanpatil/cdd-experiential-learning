@@ -137,6 +137,12 @@ def test_complaint_assignment_and_proof_of_fix(client):
     assert complaint["status"] == "Reported"
     assert complaint["due_at"]
     complaint_id = complaint["id"]
+    initial_activity = client.get(
+        f"/complaints/{complaint_id}/activity",
+        headers=student_headers,
+    )
+    assert initial_activity.status_code == 200
+    assert initial_activity.json()[0]["message"] == "Your request was submitted."
 
     admin_headers = _admin_headers(client)
     staff_response = client.post(
@@ -158,6 +164,11 @@ def test_complaint_assignment_and_proof_of_fix(client):
         params={"staff_id": staff_id},
     )
     assert assign_response.status_code == 200
+    assigned_activity = client.get(
+        f"/complaints/{complaint_id}/activity",
+        headers=student_headers,
+    )
+    assert assigned_activity.json()[-1]["message"] == "Assigned to the maintenance team."
 
     staff_login = client.post(
         "/auth/login",
@@ -197,6 +208,12 @@ def test_complaint_assignment_and_proof_of_fix(client):
         files={"after_photo": ("after.png", b"\x89PNG\r\n\x1a\nimage", "image/png")},
     )
     assert resolved.status_code == 200
+    feedback_before_confirmation = client.post(
+        f"/complaints/{complaint_id}/feedback",
+        headers=student_headers,
+        json={"rating": 5},
+    )
+    assert feedback_before_confirmation.status_code == 409
     notifications = client.get("/notifications", headers=student_headers)
     assert notifications.status_code == 200
     assert any(item["kind"] == "verification" for item in notifications.json())
@@ -216,6 +233,117 @@ def test_complaint_assignment_and_proof_of_fix(client):
     )
     assert history.status_code == 200
     assert history.json()["complaints"][0]["status"] == "In Progress"
+    activity = client.get(
+        f"/complaints/{complaint_id}/activity",
+        headers=student_headers,
+    )
+    assert [item["to_status"] for item in activity.json()] == [
+        "Reported",
+        "Assigned",
+        "In Progress",
+        "Resolved",
+        "In Progress",
+    ]
+    assert activity.json()[-1]["message"] == "You asked the maintenance team to take another look."
+
+    resolved_again = client.patch(
+        f"/staff/{staff_id}/complaints/{complaint_id}/status",
+        headers=staff_headers,
+        params={"status": "Resolved"},
+        data={"note": "Replaced the bulbs and tested the lights."},
+        files={"after_photo": ("after.png", b"\x89PNG\r\n\x1a\nimage", "image/png")},
+    )
+    assert resolved_again.status_code == 200
+    confirmation = client.post(
+        f"/students/{student_id}/complaints/{complaint_id}/verification",
+        headers=student_headers,
+        json={"action": "confirm"},
+    )
+    assert confirmation.status_code == 200
+    assert confirmation.json()["status"] == "Closed"
+
+    invalid_feedback = client.post(
+        f"/complaints/{complaint_id}/feedback",
+        headers=student_headers,
+        json={"rating": 6},
+    )
+    assert invalid_feedback.status_code == 422
+    feedback = client.post(
+        f"/complaints/{complaint_id}/feedback",
+        headers=student_headers,
+        json={"rating": 5, "comment": "  Quick and helpful repair.  "},
+    )
+    assert feedback.status_code == 201
+    assert feedback.json()["rating"] == 5
+    assert feedback.json()["comment"] == "Quick and helpful repair."
+
+    duplicate_feedback = client.post(
+        f"/complaints/{complaint_id}/feedback",
+        headers=student_headers,
+        json={"rating": 4},
+    )
+    student_feedback = client.get(
+        f"/complaints/{complaint_id}/feedback",
+        headers=student_headers,
+    )
+    admin_feedback = client.get(
+        f"/complaints/{complaint_id}/feedback",
+        headers=admin_headers,
+    )
+    staff_feedback = client.get(
+        f"/complaints/{complaint_id}/feedback",
+        headers=staff_headers,
+    )
+    assert duplicate_feedback.status_code == 409
+    assert student_feedback.json()["eligible"] is True
+    assert student_feedback.json()["feedback"]["id"] == feedback.json()["id"]
+    assert admin_feedback.json()["feedback"]["comment"] == "Quick and helpful repair."
+    assert staff_feedback.status_code == 403
+
+
+def test_complaint_activity_is_private_to_the_complaint_owner(client):
+    registration = client.post(
+        "/students/register",
+        json={"usn": "TEST001", "password": "Test@12345"},
+    )
+    student_id = registration.json()["id"]
+    owner_headers = _student_headers(client, "TEST001")
+    other_registration = client.post(
+        "/students/register",
+        json={"usn": "TEST002", "password": "Test@12345"},
+    )
+    other_headers = _student_headers(client, "TEST002")
+    complaint = client.post(
+        f"/complaints?student_id={student_id}",
+        headers=owner_headers,
+        json={
+            "title": "Water leak",
+            "description": "There is a leak near the sink.",
+            "category": "Plumbing",
+            "location": "Block B, Room 10",
+        },
+    )
+    complaint_id = complaint.json()["id"]
+
+    denied = client.get(
+        f"/complaints/{complaint_id}/activity",
+        headers=other_headers,
+    )
+    admin_view = client.get(
+        f"/complaints/{complaint_id}/activity",
+        headers=_admin_headers(client),
+    )
+
+    assert other_registration.status_code == 200
+    assert complaint.status_code == 200
+    assert denied.status_code == 404
+    assert admin_view.status_code == 200
+    assert len(admin_view.json()) == 1
+    private_feedback = client.get(
+        f"/complaints/{complaint_id}/feedback",
+        headers=other_headers,
+    )
+    assert private_feedback.status_code == 404
 
 
 def test_admin_routes_require_admin_role(client):

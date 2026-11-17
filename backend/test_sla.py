@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.database import Base
+from app.main import _student_confirmed_closure
 from app.sla import deadline_for, escalation_levels_due, run_sla_cycle
 
 
@@ -54,5 +55,12 @@ def test_sla_cycle_escalates_and_auto_closes():
         assert resolved.status == "Closed"
         assert db.query(models.EscalationHistory).filter_by(complaint_id=overdue.id).count() == 3
         assert db.query(models.Notification).filter_by(kind="escalation").count() == 3
+        closure = db.query(models.ComplaintActivity).filter_by(
+            complaint_id=resolved.id,
+        ).one()
+        assert closure.from_status == "Resolved"
+        assert closure.to_status == "Closed"
+        assert closure.actor_role == "system"
+        assert not _student_confirmed_closure(db, resolved.id)
     Base.metadata.drop_all(bind=engine)
     engine.dispose()

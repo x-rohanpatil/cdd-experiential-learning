@@ -41,7 +41,7 @@ function LoginPage() {
       setSuccess(`Welcome back, ${user.name}.`)
       const defaultPath = auth.role === 'admin'
         ? '/admin'
-        : auth.role === 'staff' ? '/staff/tasks' : '/report'
+        : auth.role === 'staff' ? '/staff/tasks' : '/dashboard'
       const returnTo = location.state?.from
       navigate(returnTo ? `${returnTo.pathname}${returnTo.search}` : defaultPath, { replace: true })
     } catch (requestError) {

@@ -1,6 +1,15 @@
-import { Link, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { getNotifications, markNotificationRead } from '../services/api.js'
+import {
+  Bell,
+  ClipboardList,
+  LayoutDashboard,
+  LogOut,
+  QrCode,
+  UserRound,
+  Wrench,
+} from 'lucide-react'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { getNotifications } from '../services/api.js'
 
 function readAuth() {
   try {
@@ -12,22 +21,18 @@ function readAuth() {
 
 function WorkspaceLayout({ title, children }) {
   const auth = readAuth()
+  const { pathname } = useLocation()
   const navigate = useNavigate()
-  const [notifications, setNotifications] = useState([])
+  const [unreadCount, setUnreadCount] = useState(0)
   const [notificationError, setNotificationError] = useState('')
 
   useEffect(() => {
+    if (pathname === '/notifications') return undefined
     getNotifications()
-      .then(({ data }) => setNotifications(data))
+      .then(({ data }) => setUnreadCount(data.filter((item) => !item.read).length))
       .catch(() => setNotificationError('Notifications are temporarily unavailable.'))
-  }, [])
-
-  async function markRead(id) {
-    await markNotificationRead(id)
-    setNotifications((items) => items.map((item) =>
-      item.id === id ? { ...item, read: true } : item,
-    ))
-  }
+    return undefined
+  }, [pathname])
 
   function signOut() {
     sessionStorage.removeItem('campusfix.auth')
@@ -35,63 +40,99 @@ function WorkspaceLayout({ title, children }) {
     navigate('/login', { replace: true })
   }
 
-  const links = auth?.role === 'admin'
-    ? [['/admin', 'Complaints'], ['/admin/qr-codes', 'QR Codes']]
+  const roleLinks = auth?.role === 'admin'
+    ? [['/admin', 'Overview', LayoutDashboard], ['/admin/qr-codes', 'Locations', QrCode]]
     : auth?.role === 'staff'
-      ? [['/staff/tasks', 'My tasks']]
-      : [['/report', 'Report issue'], ['/tracking', 'My complaints']]
+      ? [['/staff/tasks', 'My tasks', Wrench]]
+      : [
+        ['/dashboard', 'Overview', LayoutDashboard],
+        ['/report', 'Report issue', ClipboardList],
+        ['/tracking', 'My complaints', Wrench],
+      ]
+  const links = [
+    ...roleLinks,
+    ['/notifications', 'Notifications', Bell],
+    ['/profile', 'Profile', UserRound],
+  ]
+  const homePath = roleLinks[0][0]
+  const initials = (auth?.name || 'CampusFix')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
 
   return (
-    <main className="workspace-shell">
-      <header className="workspace-header">
-        <Link className="workspace-brand" to={links[0][0]}>
+    <div className="workspace-shell">
+      <header className="workspace-mobilebar">
+        <Link className="workspace-brand" to={homePath}>
           <span className="brand-mark">CF</span>
-          <span>CampusFix</span>
+          <span className="brand-name">CampusFix</span>
         </Link>
+        <button className="workspace-signout" type="button" onClick={signOut} aria-label="Sign out">
+          <LogOut size={17} aria-hidden="true" />
+        </button>
+      </header>
+      <aside className="workspace-sidebar">
+        <Link className="workspace-brand" to={homePath}>
+          <span className="brand-mark">CF</span>
+          <span className="brand-name">CampusFix</span>
+        </Link>
+        <div className="workspace-sidebar__label">WORKSPACE</div>
         <nav className="workspace-nav" aria-label="Main navigation">
-          {links.map(([href, label]) => (
-            <Link key={href} to={href}>{label}</Link>
+          {links.map(([href, label, Icon]) => (
+            <NavLink
+              className={({ isActive }) => `workspace-nav__link${isActive ? ' is-active' : ''}`}
+              end
+              key={href}
+              to={href}
+            >
+              <Icon size={18} aria-hidden="true" />
+              <span>{label}</span>
+              {label === 'Notifications' && pathname !== '/notifications' && unreadCount > 0 && (
+                <span className="workspace-nav__count">{unreadCount}</span>
+              )}
+            </NavLink>
           ))}
         </nav>
-        <div className="workspace-account">
-          <span>{auth?.name}</span>
-          <button type="button" onClick={signOut}>Sign out</button>
-        </div>
-      </header>
-      <section className="workspace-content">
-        <div className="workspace-title-row">
-          <h1>{title}</h1>
-          {notifications.some((item) => !item.read) && (
-            <span className="notification-count">
-              {notifications.filter((item) => !item.read).length} new notification(s)
+        <div className="workspace-sidebar__bottom">
+          <Link className="workspace-user" to="/profile">
+            <span className="workspace-user__avatar">{initials}</span>
+            <span className="workspace-user__copy">
+              <strong>{auth?.name || 'Campus member'}</strong>
+              <small>{auth?.role || 'Account'}</small>
             </span>
-          )}
+          </Link>
+          <button className="workspace-signout" type="button" onClick={signOut}>
+            <LogOut size={17} aria-hidden="true" /> Sign out
+          </button>
         </div>
-        {notifications.length > 0 && (
-          <section className="notification-list" aria-label="Notifications">
-            {notifications.slice(0, 5).map((notification) => (
-              <article
-                className={`notification-item${notification.read ? '' : ' notification-item--new'}`}
-                key={notification.id}
-              >
-                <span>{notification.message}</span>
-                {!notification.read && (
-                  <button type="button" onClick={() => markRead(notification.id)}>
-                    Mark read
-                  </button>
-                )}
-                {notificationError && (
-                  <p className="form-message form-message--error" role="status">
-                    {notificationError}
-                  </p>
-                )}
-              </article>
-            ))}
-          </section>
-        )}
-        {children}
-      </section>
-    </main>
+      </aside>
+
+      <main className="workspace-main">
+        <section className="workspace-content">
+          <header className="workspace-page-heading">
+            <div>
+              <p className="eyebrow eyebrow--blue">CAMPUSFIX / {auth?.role || 'WORKSPACE'}</p>
+              <h1>{title}</h1>
+            </div>
+            {pathname !== '/notifications' && unreadCount > 0 && (
+              <Link className="workspace-alert" to="/notifications">
+                <Bell size={16} aria-hidden="true" />
+                <span>{unreadCount} new update{unreadCount === 1 ? '' : 's'}</span>
+              </Link>
+            )}
+          </header>
+          {pathname !== '/notifications' && notificationError && (
+            <p className="form-message form-message--error" role="status">{notificationError}</p>
+          )}
+          <div className="workspace-page-content" key={title}>
+            {children}
+          </div>
+        </section>
+      </main>
+    </div>
   )
 }
 
