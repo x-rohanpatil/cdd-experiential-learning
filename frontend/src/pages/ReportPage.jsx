@@ -34,6 +34,7 @@ function ReportPage() {
   const [locationError, setLocationError] = useState('')
   const [busy, setBusy] = useState(false)
   const [isLoadingLocations, setIsLoadingLocations] = useState(true)
+  const [manualLocation, setManualLocation] = useState(false)
 
   useEffect(() => {
     getLocations()
@@ -98,6 +99,7 @@ function ReportPage() {
         summary: '',
       })
       setPhoto(null)
+      setManualLocation(false)
       setSuggested(false)
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, 'Unable to submit your complaint.'))
@@ -144,10 +146,29 @@ function ReportPage() {
                 <option value="">Loading campus locations…</option>
               </select>
             ) : locations.length > 0 ? (
-              <select name="location" required value={form.location} onChange={updateField}>
-                <option value="">Select a campus location</option>
-                {locations.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
-              </select>
+              <>
+                <select
+                  name="location"
+                  required
+                  value={manualLocation ? '__other' : form.location}
+                  onChange={(event) => {
+                    if (event.target.value === '__other') {
+                      setManualLocation(true)
+                      setForm((current) => ({ ...current, location: '' }))
+                    } else {
+                      setManualLocation(false)
+                      updateField(event)
+                    }
+                  }}
+                >
+                  <option value="">Select a campus location</option>
+                  {locations.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
+                  <option value="__other">Other (type the location yourself)</option>
+                </select>
+                {manualLocation && (
+                  <input name="location" required value={form.location} onChange={updateField} placeholder="Building, floor, and room" />
+                )}
+              </>
             ) : (
               <input name="location" required value={form.location} onChange={updateField} placeholder="Building, floor, and room" />
             )}
