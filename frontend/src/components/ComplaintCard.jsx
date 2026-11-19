@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { ArrowUpRight, MapPin } from 'lucide-react'
+import { ArrowUpRight, MapPin } from './Icons.jsx'
 import { Link } from 'react-router-dom'
 import { getComplaintPhoto } from '../services/api.js'
 
@@ -28,14 +28,26 @@ function getClockSnapshot() {
   return clockTimestamp
 }
 
-export function SlaBadge({ dueAt }) {
+export function SlaBadge({ dueAt, createdAt }) {
   const now = useSyncExternalStore(subscribeToClock, getClockSnapshot, getClockSnapshot)
   if (!dueAt) return <span className="status-badge">SLA unavailable</span>
-  const remaining = new Date(dueAt).getTime() - now
-  if (remaining <= 0) return <span className="status-badge status-badge--overdue">Overdue</span>
+  const dueTimestamp = new Date(dueAt).getTime()
+  if (!Number.isFinite(dueTimestamp)) return <span className="status-badge">SLA unavailable</span>
+  const remaining = dueTimestamp - now
+  if (remaining <= 0) return <span className="status-badge status-badge--overdue sla-badge">Overdue</span>
   const hours = Math.floor(remaining / 3_600_000)
   const minutes = Math.floor((remaining % 3_600_000) / 60_000)
-  return <span className="status-badge">{hours}h {minutes}m left</span>
+  const parsedStart = createdAt ? new Date(createdAt).getTime() : now
+  const startTimestamp = Number.isFinite(parsedStart) ? parsedStart : now
+  const total = Math.max(1, dueTimestamp - startTimestamp)
+  const elapsed = Math.min(total, Math.max(0, now - startTimestamp))
+  const progress = Math.min(100, Math.max(0, (elapsed / total) * 100))
+  return (
+    <span className="status-badge sla-badge" aria-label={`${hours} hours and ${minutes} minutes until target`}>
+      <span>{hours}h {minutes}m left</span>
+      <span className="sla-badge__meter" aria-hidden="true"><span style={{ width: `${progress}%` }} /></span>
+    </span>
+  )
 }
 
 export function PrivatePhoto({ filename, label }) {
@@ -64,7 +76,7 @@ export function PrivatePhoto({ filename, label }) {
     <figure className="complaint-photo">
       {url
         ? <img src={url} alt={label} />
-        : <span>{failed ? 'Photo unavailable' : 'Loading photo…'}</span>}
+        : <span className={failed ? 'photo-placeholder' : 'photo-placeholder photo-placeholder--loading'}>{failed ? 'Photo unavailable' : 'Loading photo…'}</span>}
       <figcaption>{label}</figcaption>
     </figure>
   )
@@ -78,7 +90,7 @@ export function ComplaintCard({ complaint, children }) {
           <p className="eyebrow">Complaint #{complaint.id}</p>
           <h2><Link className="complaint-card__title" to={`/complaints/${complaint.id}`}>{complaint.title}</Link></h2>
         </div>
-        <SlaBadge dueAt={complaint.due_at} />
+        <SlaBadge createdAt={complaint.created_at} dueAt={complaint.due_at} />
       </div>
       <p>{complaint.summary || complaint.description}</p>
       <div className="complaint-meta">

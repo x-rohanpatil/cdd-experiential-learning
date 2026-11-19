@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Check, Sparkles } from 'lucide-react'
+import { Check, ClipboardCheck } from '../components/Icons.jsx'
 import { useSearchParams } from 'react-router-dom'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
 import ImageUploadField from '../components/ImageUploadField.jsx'
+import { SkeletonLoader } from '../components/StateViews.jsx'
 import {
   analyzeComplaint,
   createComplaint,
@@ -111,7 +112,7 @@ function ReportPage() {
   return (
     <WorkspaceLayout title="Report a maintenance issue">
       <div className="report-intro">
-        <p>Tell us what needs attention. Your campus team will take it from here.</p>
+        <div><p className="eyebrow">A BETTER CAMPUS BEGINS HERE</p><h2>Help us see what needs fixing.</h2><p>Tell us what needs attention. Your campus team will take it from here.</p></div>
         <div className="report-steps" aria-label="Report process">
           <span className="report-step report-step--active"><b>01</b> Describe</span>
           <span className="report-step"><b>02</b> Review</span>
@@ -119,6 +120,7 @@ function ReportPage() {
         </div>
       </div>
       <form className="workspace-panel workspace-form report-form" onSubmit={submit}>
+        <div className="report-form__main">
         <section className="report-section">
           <div className="report-section__heading">
             <span className="report-section__number">01</span>
@@ -142,9 +144,7 @@ function ReportPage() {
           <label className="form-field">
             <span>Campus location</span>
             {isLoadingLocations ? (
-              <select aria-label="Campus location" disabled value="">
-                <option value="">Loading campus locations…</option>
-              </select>
+              <SkeletonLoader rows={1} label="Loading campus locations" />
             ) : locations.length > 0 ? (
               <>
                 <select
@@ -184,15 +184,16 @@ function ReportPage() {
             }}
           />
         </section>
-
+        </div>
+        <aside className="report-form__aside">
         <section className="report-section report-section--suggestions">
           <button className="button button--secondary" disabled={busy || !form.title || !form.description} type="button" onClick={requestSuggestion}>
-            <Sparkles size={16} aria-hidden="true" /> {busy ? 'Reviewing your report…' : 'Suggest category and priority'}
+            <ClipboardCheck size={16} aria-hidden="true" /> {busy ? 'Reviewing your report…' : 'Suggest category and priority'}
           </button>
           {suggested && (
             <section className="suggestion-panel" aria-label="AI suggestions">
               <div className="suggestion-panel__heading">
-                <Sparkles size={17} aria-hidden="true" />
+                <ClipboardCheck size={17} aria-hidden="true" />
                 <div><strong>Suggested details</strong><p>Review and adjust these before you submit.</p></div>
               </div>
             <label className="form-field">
@@ -224,6 +225,7 @@ function ReportPage() {
           <p><Check size={15} aria-hidden="true" /> Your report is only shared with your campus team.</p>
           <button className="button button--primary" disabled={busy || isLoadingLocations} type="submit">{busy ? 'Submitting…' : 'Submit report'}</button>
         </div>
+        </aside>
       </form>
     </WorkspaceLayout>
   )

@@ -3,7 +3,8 @@ import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
 import { ComplaintCard } from '../components/ComplaintCard.jsx'
 import ComplaintFilters from '../components/ComplaintFilters.jsx'
 import ImageUploadField from '../components/ImageUploadField.jsx'
-import { ClipboardCheck } from 'lucide-react'
+import { ClipboardCheck } from '../components/Icons.jsx'
+import { EmptyIllustration, SkeletonLoader } from '../components/StateViews.jsx'
 import { filterComplaints } from '../utils/complaints.js'
 import {
   getApiErrorMessage,
@@ -88,7 +89,7 @@ function StaffTasksPage() {
         <div><p className="eyebrow">YOUR ASSIGNMENTS</p><h2>Maintenance queue</h2></div>
       </div>
       <ComplaintFilters search={search} onSearchChange={setSearch} status={status} onStatusChange={setStatus} />
-      {isLoading && <p className="workspace-empty">Loading assigned tasks…</p>}
+      {isLoading && <SkeletonLoader rows={3} large label="Loading assigned maintenance tasks" />}
       {tasks.length > 0 && filtered.length === 0 && <p className="workspace-empty">No tasks match those filters.</p>}
       <div className="complaint-list">
         {filtered.map((task) => (
@@ -122,7 +123,7 @@ function StaffTasksPage() {
           </ComplaintCard>
         ))}
       </div>
-      {!isLoading && tasks.length === 0 && !error && <div className="empty-state glass-card"><span className="empty-state__icon"><ClipboardCheck size={22} aria-hidden="true" /></span><h2>Your queue is clear</h2><p>New assigned maintenance tasks will appear here.</p></div>}
+      {!isLoading && tasks.length === 0 && !error && <div className="empty-state glass-card"><EmptyIllustration variant="queue" /><span className="empty-state__icon"><ClipboardCheck size={22} aria-hidden="true" /></span><h2>Your queue is clear</h2><p>New assigned maintenance tasks will appear here.</p></div>}
     </WorkspaceLayout>
   )
 }

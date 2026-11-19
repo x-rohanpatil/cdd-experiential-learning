@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { MapPinPlus } from 'lucide-react'
+import { MapPinPlus } from '../components/Icons.jsx'
 import QRCode from 'qrcode'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
+import { EmptyIllustration, SkeletonLoader } from '../components/StateViews.jsx'
 import {
   createLocation,
   getAdminBuildingAnalytics,
@@ -79,7 +80,7 @@ function QrCodesPage() {
       return [location.id, await QRCode.toDataURL(reportUrl.toString(), {
         margin: 2,
         width: 256,
-        color: { dark: '#192f51', light: '#ffffff' },
+        color: { dark: '#0D1117', light: '#FFFFFF' },
       })]
     }))
     setCodes(Object.fromEntries(entries))
@@ -184,7 +185,7 @@ function QrCodesPage() {
         <button className="button button--primary" disabled={isSaving} type="submit">{isSaving ? 'Creating…' : 'Add location'}</button>
       </form>
       <div className="qr-grid">
-        {isLoading && <p className="workspace-empty">Loading campus locations…</p>}
+        {isLoading && <SkeletonLoader rows={3} large label="Loading campus locations and QR codes" />}
         {locations.map((location) => (
           <article className="workspace-panel qr-card" key={location.id}>
             <div className="qr-card__body">
@@ -209,7 +210,7 @@ function QrCodesPage() {
           </article>
         ))}
       </div>
-      {!isLoading && locations.length === 0 && !error && <p className="workspace-empty">No campus locations have been added yet.</p>}
+      {!isLoading && locations.length === 0 && !error && <div className="empty-state"><EmptyIllustration variant="locations" /><h2>No locations yet</h2><p>Add a room or campus asset to create its report QR code.</p></div>}
     </WorkspaceLayout>
   )
 }

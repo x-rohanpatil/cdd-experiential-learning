@@ -1,4 +1,4 @@
-import { ShieldCheck, UserRound } from 'lucide-react'
+import { ShieldCheck, UserRound } from '../components/Icons.jsx'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
 
 function readSessionValue(key) {
@@ -23,14 +23,14 @@ function ProfilePage() {
   return (
     <WorkspaceLayout title="Your profile">
       <section className="profile-layout">
-        <div className="profile-card glass-card">
+        <div className="profile-card profile-card--pass glass-card">
           <span className="profile-card__avatar"><UserRound size={28} aria-hidden="true" /></span>
           <p className="eyebrow eyebrow--blue">CAMPUSFIX ACCOUNT</p>
           <h2>{auth.name || 'Campus member'}</h2>
           <span className="profile-card__role">{roleNames[auth.role] || 'Campus member'}</span>
           <div className="profile-fields">
             {profileFields.map(([label, value]) => (
-              <div className="profile-field" key={label}>
+              <div className={`profile-field${label === 'Student ID' ? ' profile-field--identifier' : ''}`} key={label}>
                 <span>{label}</span>
                 <strong>{value}</strong>
               </div>

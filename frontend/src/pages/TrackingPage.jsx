@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { ClipboardList } from 'lucide-react'
+import { ClipboardList } from '../components/Icons.jsx'
 import { Link } from 'react-router-dom'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
 import { ComplaintCard } from '../components/ComplaintCard.jsx'
 import ComplaintFilters from '../components/ComplaintFilters.jsx'
 import { getApiErrorMessage, getStudentComplaints, verifyComplaint } from '../services/api.js'
 import { filterComplaints } from '../utils/complaints.js'
+import { EmptyIllustration, SkeletonLoader } from '../components/StateViews.jsx'
 
 function TrackingPage() {
   const auth = JSON.parse(sessionStorage.getItem('campusfix.auth') ?? '{}')
@@ -64,9 +65,10 @@ function TrackingPage() {
         status={status}
         onStatusChange={setStatus}
       />
-      {isLoading && <p className="workspace-empty">Loading complaints…</p>}
+      {isLoading && <SkeletonLoader rows={3} large label="Loading your complaints" />}
       {!isLoading && complaints.length === 0 && !error && (
         <div className="empty-state glass-card">
+          <EmptyIllustration variant="request" />
           <span className="empty-state__icon"><ClipboardList size={23} aria-hidden="true" /></span>
           <h2>No complaints yet</h2>
           <p>When you report a campus issue, you’ll be able to follow its progress here.</p>

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, CalendarDays, MapPin, Star, Tag } from 'lucide-react'
+import { ArrowLeft, CalendarDays, MapPin, Star, Tag } from '../components/Icons.jsx'
 import { Link, useParams } from 'react-router-dom'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
 import { ComplaintCard } from '../components/ComplaintCard.jsx'
+import { SkeletonLoader } from '../components/StateViews.jsx'
 import {
   getAdminComplaints,
   getApiErrorMessage,
@@ -185,7 +186,7 @@ function ComplaintDetailPage() {
     <WorkspaceLayout title="Complaint details">
       <Link className="back-link" to={backPath}><ArrowLeft size={16} aria-hidden="true" /> Back to complaints</Link>
       {error && <p className="form-message form-message--error" role="alert">{error}</p>}
-      {isLoading && <p className="workspace-empty">Loading complaint details…</p>}
+      {isLoading && <SkeletonLoader rows={2} large label="Loading complaint details" />}
       {!isLoading && !error && !complaint && <p className="workspace-empty">This complaint isn’t available in your workspace.</p>}
       {complaint && (
         <div className="complaint-detail-layout">
@@ -198,7 +199,7 @@ function ComplaintDetailPage() {
                   <h2 id="activity-heading">Updates to your request</h2>
                 </div>
               </div>
-              {isActivityLoading && <p className="workspace-empty">Loading request updates…</p>}
+              {isActivityLoading && <SkeletonLoader rows={3} label="Loading request updates" />}
               {activityError && <p className="form-message form-message--error" role="alert">{activityError}</p>}
               {!isActivityLoading && !activityError && activity.length === 0 && (
                 <p className="workspace-empty">Updates will appear here as your request moves forward.</p>

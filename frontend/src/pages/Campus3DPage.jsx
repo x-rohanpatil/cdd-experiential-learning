@@ -1,15 +1,16 @@
 import { Component, useCallback, useEffect, useRef, useState } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { Edges, OrbitControls } from '@react-three/drei'
-import { Building2, RotateCcw } from 'lucide-react'
+import { Building2, RotateCcw } from '../components/Icons.jsx'
 import { Link, useNavigate } from 'react-router-dom'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
+import { SkeletonLoader } from '../components/StateViews.jsx'
 import { getAdminBuildingAnalytics, getApiErrorMessage } from '../services/api.js'
 
 function buildingColor(count) {
-  if (count === 0) return '#48b989'
-  if (count < 5) return '#e8b65f'
-  return '#e8787c'
+  if (count === 0) return '#73927a'
+  if (count < 5) return '#b3914e'
+  return '#a95a4b'
 }
 
 function formatDuration(hours) {
@@ -64,7 +65,7 @@ function BuildingBlock({ building, selected, onSelect, reducedMotion }) {
           roughness={0.58}
           metalness={0.08}
         />
-        <Edges color={hovered || selected ? '#e5f1ff' : '#8298b4'} scale={1.004} />
+        <Edges color={hovered || selected ? '#334c3c' : '#687d6a'} scale={1.004} />
       </mesh>
       {building.floors.slice(1).map((floor, index) => (
         <mesh
@@ -73,7 +74,7 @@ function BuildingBlock({ building, selected, onSelect, reducedMotion }) {
           raycast={() => null}
         >
           <boxGeometry args={[width + 0.025, 0.018, depth + 0.025]} />
-          <meshBasicMaterial color="#d7e8fb" transparent opacity={0.34} />
+          <meshBasicMaterial color="#f7f4e9" transparent opacity={0.55} />
         </mesh>
       ))}
     </group>
@@ -83,13 +84,13 @@ function BuildingBlock({ building, selected, onSelect, reducedMotion }) {
 function CampusScene({ buildings, selectedKey, onSelect, reducedMotion }) {
   return (
     <>
-      <color attach="background" args={['#0a1422']} />
-      <fog attach="fog" args={['#0a1422', 23, 45]} />
+      <color attach="background" args={['#d9ded5']} />
+      <fog attach="fog" args={['#d9ded5', 23, 45]} />
       <ambientLight intensity={1.25} />
       <directionalLight position={[8, 15, 8]} intensity={2.2} castShadow />
       <mesh position={[0, -0.08, 0]}>
         <boxGeometry args={[28, 0.16, 23]} />
-        <meshStandardMaterial color="#142438" roughness={0.9} />
+        <meshStandardMaterial color="#c6cec2" roughness={0.9} />
       </mesh>
       {buildings.map((building) => (
         <BuildingBlock
@@ -379,7 +380,7 @@ function Campus3DPage() {
         <div className="workspace-summary__card"><span className="eyebrow">AVG. REPAIR TIME</span><strong>{isLoading || error ? '—' : formatDuration(totals.average_resolution_hours)}</strong><span>Resolved requests only</span></div>
         <div className="workspace-summary__card"><span className="eyebrow">NEEDS MAPPING</span><strong>{isLoading || error ? '—' : totals.unmapped_open_complaints}</strong><span>Open requests with unknown location</span></div>
       </section>
-      {isLoading && <div className="workspace-empty">Loading campus activity…</div>}
+      {isLoading && <SkeletonLoader rows={3} large label="Loading campus activity" />}
       {!isLoading && !error && (
         <>
           {totals.unmapped_open_complaints > 0 && (

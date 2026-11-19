@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
+import { EmptyIllustration, SkeletonLoader } from '../components/StateViews.jsx'
 import { ComplaintCard } from '../components/ComplaintCard.jsx'
 import ComplaintFilters from '../components/ComplaintFilters.jsx'
 import { Link } from 'react-router-dom'
@@ -206,7 +207,7 @@ function AdminPage() {
           <Link className="text-link" to="/admin/qr-codes">Manage locations</Link>
         </div>
         <ComplaintFilters search={search} onSearchChange={setSearch} status={status} onStatusChange={setStatus} />
-        {isLoading && <p className="workspace-empty">Loading campus complaints…</p>}
+        {isLoading && <SkeletonLoader rows={4} large label="Loading campus complaints" />}
         {complaints.length > 0 && filtered.length === 0 && <p className="workspace-empty">No complaints match those filters.</p>}
         <div className="complaint-list">
         {filtered.map((complaint) => (
@@ -235,7 +236,7 @@ function AdminPage() {
           </ComplaintCard>
         ))}
         </div>
-        {!isLoading && complaints.length === 0 && !error && <p className="workspace-empty">No complaints have been reported.</p>}
+        {!isLoading && complaints.length === 0 && !error && <div className="empty-state"><EmptyIllustration variant="request" /><h2>No complaints to review</h2><p>New campus reports will appear here for assignment.</p></div>}
       </section>
     </WorkspaceLayout>
   )

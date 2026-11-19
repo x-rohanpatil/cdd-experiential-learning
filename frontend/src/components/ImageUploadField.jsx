@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ImagePlus } from 'lucide-react'
+import { ImagePlus } from './Icons.jsx'
 
 const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const MAX_FILE_SIZE = 8 * 1024 * 1024

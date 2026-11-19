@@ -1,4 +1,4 @@
-import { Search } from 'lucide-react'
+import { Search } from './Icons.jsx'
 
 const statuses = ['Reported', 'Submitted', 'Assigned', 'In Progress', 'Resolved', 'Closed']
 

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, ClipboardList, Clock3, CircleCheck, CircleDashed } from 'lucide-react'
+import { ArrowRight, ClipboardList, Clock3, CircleCheck, CircleDashed } from '../components/Icons.jsx'
 import { Link } from 'react-router-dom'
 import ComplaintCard from '../components/ComplaintCard.jsx'
 import ComplaintFilters from '../components/ComplaintFilters.jsx'
-import TiltCard from '../components/TiltCard.jsx'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
+import { EmptyIllustration, SkeletonLoader } from '../components/StateViews.jsx'
 import { getApiErrorMessage, getStudentComplaints } from '../services/api.js'
 import { filterComplaints } from '../utils/complaints.js'
 
@@ -59,13 +59,13 @@ function DashboardPage() {
 
       <section className="dashboard-stats" aria-label="Complaint summary">
         {stats.map(({ label, value, icon: Icon, tone }, index) => (
-          <TiltCard className={`dashboard-stat dashboard-stat--${tone}`} key={label}>
+          <article className={`dashboard-stat dashboard-stat--${tone}`} key={label}>
             <span className="dashboard-stat__icon"><Icon size={19} aria-hidden="true" /></span>
             <span className="dashboard-stat__label">{label}</span>
             <strong className="dashboard-stat__value" style={{ animationDelay: `${index * 70}ms` }}>
               {isLoading || error ? '—' : value}
             </strong>
-          </TiltCard>
+          </article>
         ))}
       </section>
 
@@ -84,9 +84,10 @@ function DashboardPage() {
             status={status}
             onStatusChange={setStatus}
           />
-          {isLoading && <p className="workspace-empty">Loading your complaints…</p>}
+          {isLoading && <SkeletonLoader rows={2} large label="Loading your recent complaints" />}
           {!isLoading && !error && complaints.length === 0 && (
             <div className="empty-state glass-card">
+              <EmptyIllustration variant="request" />
               <span className="empty-state__icon"><ClipboardList size={23} aria-hidden="true" /></span>
               <h3>A good place to start</h3>
               <p>You haven’t reported an issue yet. Your first report helps keep campus in shape.</p>
@@ -110,8 +111,8 @@ function DashboardPage() {
               <h2>Request status</h2>
             </div>
           </div>
-          {isLoading && <p className="workspace-empty">Loading status data…</p>}
-          {error && <p className="workspace-empty">Status breakdown is unavailable until your requests load.</p>}
+          {isLoading && <SkeletonLoader rows={4} label="Loading status breakdown" />}
+          {error && <p className="form-message form-message--error" role="status">Status breakdown is unavailable until your requests load.</p>}
           {!isLoading && !error && (
             <>
               <div className="status-chart" aria-label="Complaint counts by status">
@@ -130,6 +131,20 @@ function DashboardPage() {
                 <CircleCheck size={15} aria-hidden="true" />
                 Your updates are based on the latest campus records.
               </p>
+              <section className="dashboard-activity" aria-labelledby="dashboard-activity-heading">
+                <div className="dashboard-activity__heading"><p className="eyebrow">LATEST MOVEMENT</p><h3 id="dashboard-activity-heading">Recent activity</h3></div>
+                {complaints.length > 0 ? (
+                  <ol className="dashboard-activity__list">
+                    {complaints.slice(0, 3).map((item) => (
+                      <li key={item.id}>
+                        <span className="dashboard-activity__marker" aria-hidden="true" />
+                        <div><strong>{item.title}</strong><small>Request #{item.id} · {new Date(item.updated_at || item.created_at).toLocaleDateString()}</small></div>
+                        <span className={`status-badge status-badge--${item.status.toLowerCase().replaceAll(' ', '-')}`}>{item.status}</span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : <p className="dashboard-progress__note">Your first update will appear here after you report an issue.</p>}
+              </section>
             </>
           )}
         </aside>
