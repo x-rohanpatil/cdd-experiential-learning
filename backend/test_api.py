@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -166,6 +166,15 @@ def test_complaint_assignment_and_proof_of_fix(client):
         params={"staff_id": staff_id},
     )
     assert assign_response.status_code == 200
+    assert client.delete(
+        f"/complaints/{complaint_id}",
+        headers=student_headers,
+    ).status_code == 409
+    assert client.patch(
+        f"/admin/complaints/{complaint_id}/status",
+        headers=admin_headers,
+        params={"status": "Resolved"},
+    ).status_code == 400
     assigned_activity = client.get(
         f"/complaints/{complaint_id}/activity",
         headers=student_headers,
@@ -181,6 +190,23 @@ def test_complaint_assignment_and_proof_of_fix(client):
         },
     )
     staff_headers = {"Authorization": f"Bearer {staff_login.json()['access_token']}"}
+    assert client.patch(
+        f"/complaints/{complaint_id}",
+        headers=staff_headers,
+        json={"title": "Staff changed source report"},
+    ).status_code == 403
+    assert client.delete(
+        f"/complaints/{complaint_id}",
+        headers=staff_headers,
+    ).status_code == 403
+    assigned_resolution = client.patch(
+        f"/staff/{staff_id}/complaints/{complaint_id}/status",
+        headers=staff_headers,
+        params={"status": "Resolved"},
+        files={"after_photo": ("after.png", b"\x89PNG\r\n\x1a\nimage", "image/png")},
+        data={"note": "Test resolution"},
+    )
+    assert assigned_resolution.status_code == 409
     in_progress = client.patch(
         f"/staff/{staff_id}/complaints/{complaint_id}/status",
         headers=staff_headers,
@@ -218,7 +244,12 @@ def test_complaint_assignment_and_proof_of_fix(client):
     assert feedback_before_confirmation.status_code == 409
     notifications = client.get("/notifications", headers=student_headers)
     assert notifications.status_code == 200
-    assert any(item["kind"] == "verification" for item in notifications.json())
+    verification_notice = next(item for item in notifications.json() if item["kind"] == "verification")
+    marked = client.patch(f"/notifications/{verification_notice['id']}/read", headers=student_headers)
+    assert marked.status_code == 200
+    assert marked.json()["read"] is True
+    refreshed_notifications = client.get("/notifications", headers=student_headers)
+    assert next(item for item in refreshed_notifications.json() if item["id"] == verification_notice["id"])["read"] is True
 
     reopen = client.post(
         f"/students/{student_id}/complaints/{complaint_id}/verification",
@@ -361,89 +392,17 @@ def test_admin_routes_require_admin_role(client):
     assert forbidden.status_code == 403
 
 
-def test_building_analytics_aggregates_location_and_resolution_data(client):
-    registration = client.post(
-        "/students/register",
-        json={"usn": "TEST001", "password": "Test@12345"},
-    )
-    assert registration.status_code == 200
-    student_id = registration.json()["id"]
-    student_headers = _student_headers(client, "TEST001")
+def test_campus_building_catalog_and_location_mapping(client):
+    assert client.get("/admin/campus-buildings").status_code == 401
     admin_headers = _admin_headers(client)
-    mapped_location = client.post(
-        "/admin/locations",
-        headers=admin_headers,
-        json={
-            "name": "Library Media Desk",
-            "building_key": "library",
-            "floor": "2",
-        },
-    )
-    assert mapped_location.status_code == 200
-
-    def create_complaint(title, category, location):
-        response = client.post(
-            f"/complaints?student_id={student_id}",
-            headers=student_headers,
-            json={
-                "title": title,
-                "description": "A demo request for analytics testing.",
-                "category": category,
-                "location": location,
-                "priority": "medium",
-            },
-        )
-        assert response.status_code == 200
-        return response.json()["id"]
-
-    create_complaint("Room light issue", "Electrical", "Block A, Floor 1, Room 102")
-    create_complaint("Media desk network", "Network", "Library Media Desk")
-    resolved_id = create_complaint("Library tap repair", "Plumbing", "Library, Floor 1, Room 10")
-    unmapped_resolved_id = create_complaint("Outdoor bench repair", "Furniture", "Outdoor sports field")
-    create_complaint("Remote location issue", "Other", "Outdoor sports field")
-
-    database = app.dependency_overrides[get_db]()
-    db = next(database)
-    try:
-        reference_time = datetime.now(timezone.utc)
-        resolved = db.get(models.Complaint, resolved_id)
-        resolved.status = "Resolved"
-        resolved.created_at = reference_time - timedelta(hours=5)
-        resolved.resolved_at = reference_time - timedelta(hours=3)
-        unmapped_resolved = db.get(models.Complaint, unmapped_resolved_id)
-        unmapped_resolved.status = "Closed"
-        unmapped_resolved.created_at = reference_time - timedelta(hours=7)
-        unmapped_resolved.resolved_at = reference_time - timedelta(hours=3)
-        db.commit()
-    finally:
-        database.close()
-
-    analytics = client.get("/admin/analytics/buildings", headers=admin_headers)
-    assert analytics.status_code == 200
-    payload = analytics.json()
-    academic = next(item for item in payload["buildings"] if item["key"] == "academic")
-    library = next(item for item in payload["buildings"] if item["key"] == "library")
-    academic_floors = {item["floor"]: item["open_complaint_count"] for item in academic["floor_counts"]}
-    library_floors = {item["floor"]: item["open_complaint_count"] for item in library["floor_counts"]}
-
-    assert academic["open_complaint_count"] == 1
-    assert academic_floors["1"] == 1
-    assert academic["category_counts"] == [
-        {"category": "Electrical", "open_complaint_count": 1},
-    ]
-    assert library["open_complaint_count"] == 1
-    assert library_floors["2"] == 1
-    assert library["average_resolution_hours"] == 2
-    assert payload["totals"] == {
-        "open_complaints": 3,
-        "mapped_open_complaints": 2,
-        "unmapped_open_complaints": 1,
-        "average_resolution_hours": 3,
-    }
+    buildings = client.get("/admin/campus-buildings", headers=admin_headers)
+    assert buildings.status_code == 200
+    library = next(item for item in buildings.json()["buildings"] if item["key"] == "library")
+    assert library["floors"] == ["Ground", "1", "2", "3", "4"]
 
 
 def test_location_mapping_validation_and_admin_permissions(client):
-    assert client.get("/admin/analytics/buildings").status_code == 401
+    assert client.get("/admin/campus-buildings").status_code == 401
     registration = client.post(
         "/students/register",
         json={"usn": "TEST001", "password": "Test@12345"},
@@ -451,7 +410,7 @@ def test_location_mapping_validation_and_admin_permissions(client):
     assert registration.status_code == 200
     student_headers = _student_headers(client, "TEST001")
     assert client.get(
-        "/admin/analytics/buildings",
+        "/admin/campus-buildings",
         headers=student_headers,
     ).status_code == 403
 
@@ -476,7 +435,144 @@ def test_location_mapping_validation_and_admin_permissions(client):
     assert updated.status_code == 200
     assert updated.json()["building_key"] == "engineering"
     assert updated.json()["floor"] == "3"
-    assert client.get("/admin/locations", headers=admin_headers).json()["locations"][0]["building_key"] == "engineering"
+    renamed = client.patch(
+        f"/admin/locations/{location.json()['id']}",
+        headers=admin_headers,
+        json={"name": "Updated Room", "details": "West wing"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Updated Room"
+    saved_location = next(
+        item for item in client.get("/admin/locations", headers=admin_headers).json()["locations"]
+        if item["id"] == location.json()["id"]
+    )
+    assert saved_location["building_key"] == "engineering"
+    assert saved_location["floor"] == "3"
+    assert saved_location["details"] == "West wing"
+
+
+def test_complaint_edit_delete_and_soft_delete_permissions(client):
+    registration = client.post(
+        "/students/register",
+        json={"usn": "TEST001", "password": "Test@12345"},
+    )
+    assert registration.status_code == 200
+    other_registration = client.post(
+        "/students/register",
+        json={"usn": "TEST002", "password": "Test@12345"},
+    )
+    assert other_registration.status_code == 200
+    student_headers = _student_headers(client, "TEST001")
+    other_headers = _student_headers(client, "TEST002")
+    complaint = client.post(
+        "/complaints",
+        headers=student_headers,
+        json={
+            "title": "Broken projector",
+            "description": "The projector does not start.",
+            "category": "Network",
+            "location": "Block A, Room 204",
+            "priority": "medium",
+        },
+    )
+    assert complaint.status_code == 200
+    complaint_id = complaint.json()["id"]
+    edited = client.patch(
+        f"/complaints/{complaint_id}",
+        headers=student_headers,
+        json={
+            "title": "Projector power issue",
+            "description": "Room 204 projector will not turn on.",
+            "category": "Electrical",
+            "priority": "high",
+            "location": "Block A, Floor 2, Room 204",
+        },
+    )
+    assert edited.status_code == 200
+    assert edited.json()["location"] == "Block A, Floor 2, Room 204"
+    assert edited.json()["priority"] == "high"
+    assert datetime.fromisoformat(edited.json()["due_at"]) > datetime.fromisoformat(complaint.json()["due_at"])
+    assert client.patch(
+        f"/complaints/{complaint_id}",
+        headers=other_headers,
+        json={"title": "Unauthorized edit"},
+    ).status_code == 404
+    deleted = client.delete(f"/complaints/{complaint_id}", headers=student_headers)
+    assert deleted.status_code == 200
+    assert client.get(
+        f"/students/{registration.json()['id']}/complaints",
+        headers=student_headers,
+    ).json()["complaints"] == []
+    assert client.get(f"/complaints/{complaint_id}/activity", headers=student_headers).status_code == 404
+    database = app.dependency_overrides[get_db]()
+    db = next(database)
+    try:
+        stored = db.get(models.Complaint, complaint_id)
+        assert stored.deleted_at is not None
+        assert db.query(models.ComplaintActivity).filter_by(complaint_id=complaint_id).count() >= 2
+    finally:
+        database.close()
+    remaining = client.post(
+        "/complaints",
+        headers=student_headers,
+        json={
+            "title": "Admin removal test",
+            "description": "This report remains available to an administrator.",
+            "category": "Other",
+            "location": "Campus entrance",
+            "priority": "low",
+        },
+    ).json()
+    admin_deleted = client.delete(
+        f"/complaints/{remaining['id']}",
+        headers=_admin_headers(client),
+    )
+    assert admin_deleted.status_code == 200
+
+
+def test_complaint_photo_can_be_replaced_and_removed(client, monkeypatch):
+    client.post(
+        "/students/register",
+        json={"usn": "TEST001", "password": "Test@12345"},
+    )
+    student_headers = _student_headers(client, "TEST001")
+    complaint = client.post(
+        "/complaints",
+        headers=student_headers,
+        json={
+            "title": "Room photo test",
+            "description": "Photo update test.",
+            "category": "Other",
+            "location": "Room 4",
+            "priority": "low",
+        },
+    ).json()
+    stored = []
+    removed = []
+
+    def fake_save(contents, mime_type):
+        filename = f"photo-{len(stored) + 1}.png"
+        stored.append(filename)
+        return filename
+
+    monkeypatch.setattr("app.main.save_image", fake_save)
+    monkeypatch.setattr("app.main.delete_image", removed.append)
+    replacement = client.patch(
+        f"/complaints/{complaint['id']}/photo",
+        headers=student_headers,
+        files={"photo": ("replacement.png", b"\x89PNG\r\n\x1a\nimage", "image/png")},
+    )
+    assert replacement.status_code == 200
+    assert replacement.json()["before_photo_path"] == "photo-1.png"
+    assert removed == []
+    removed_response = client.patch(
+        f"/complaints/{complaint['id']}/photo",
+        headers=student_headers,
+        data={"remove_photo": "true"},
+    )
+    assert removed_response.status_code == 200
+    assert removed_response.json()["before_photo_path"] is None
+    assert removed == ["photo-1.png"]
 
 
 def test_complaint_photo_access_is_limited_to_owner(client):

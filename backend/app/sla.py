@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.activity import record_complaint_activity
 from app.notifications import add_notification
+from app.statuses import ACTIVE_STATUSES, CLOSED, RESOLVED
 
 SLA_HOURS = {
     "Network": 4,
@@ -22,7 +23,7 @@ ESCALATION_THRESHOLDS = {
     3: timedelta(hours=72),
 }
 ESCALATION_TARGETS = {1: "admin", 2: "HOD", 3: "principal"}
-UNRESOLVED_STATUSES = ("Reported", "Submitted", "Assigned", "In Progress")
+UNRESOLVED_STATUSES = ACTIVE_STATUSES
 
 
 def deadline_for(category: str, created_at: datetime) -> datetime:
@@ -53,6 +54,7 @@ def run_sla_cycle(db: Session, now: datetime | None = None) -> None:
             models.Complaint.due_at.is_not(None),
             models.Complaint.due_at <= now,
             models.Complaint.status.in_(UNRESOLVED_STATUSES),
+            models.Complaint.deleted_at.is_(None),
         )
         .with_for_update()
         .all()
@@ -93,7 +95,8 @@ def run_sla_cycle(db: Session, now: datetime | None = None) -> None:
     auto_close = (
         db.query(models.Complaint)
         .filter(
-            models.Complaint.status == "Resolved",
+            models.Complaint.status == RESOLVED,
+            models.Complaint.deleted_at.is_(None),
             models.Complaint.verification_deadline.is_not(None),
             models.Complaint.verification_deadline <= now,
         )
@@ -102,7 +105,7 @@ def run_sla_cycle(db: Session, now: datetime | None = None) -> None:
     )
     for complaint in auto_close:
         previous_status = complaint.status
-        complaint.status = "Closed"
+        complaint.status = CLOSED
         complaint.closed_at = now
         record_complaint_activity(
             db,
@@ -111,7 +114,7 @@ def run_sla_cycle(db: Session, now: datetime | None = None) -> None:
             actor_role="system",
             message="Closed after the 48-hour confirmation period.",
             from_status=previous_status,
-            to_status="Closed",
+            to_status=CLOSED,
             created_at=now,
         )
 

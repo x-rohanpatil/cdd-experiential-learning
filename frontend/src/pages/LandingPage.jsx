@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowRight, ClipboardCheck, MapPin, ShieldCheck } from 'lucide-react'
+import { ArrowDown, ArrowRight, ClipboardCheck, MapPin, ShieldCheck } from '../components/Icons.jsx'
 import { Link } from 'react-router-dom'
 
 const features = [

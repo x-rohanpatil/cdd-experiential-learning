@@ -1,4 +1,3 @@
-import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import LandingPage from './pages/LandingPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
@@ -12,8 +11,6 @@ import QrCodesPage from './pages/QrCodesPage.jsx'
 import ComplaintDetailPage from './pages/ComplaintDetailPage.jsx'
 import NotificationsPage from './pages/NotificationsPage.jsx'
 import ProfilePage from './pages/ProfilePage.jsx'
-
-const Campus3DPage = lazy(() => import('./pages/Campus3DPage.jsx'))
 
 function readAuth() {
   try {
@@ -45,7 +42,6 @@ function App() {
         <Route path="/staff/tasks" element={<ProtectedRoute roles={['staff']}><StaffTasksPage /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute roles={['admin']}><AdminPage /></ProtectedRoute>} />
         <Route path="/admin/qr-codes" element={<ProtectedRoute roles={['admin']}><QrCodesPage /></ProtectedRoute>} />
-        <Route path="/admin/campus-3d" element={<ProtectedRoute roles={['admin']}><Suspense fallback={<div className="campus-loading">Loading campus view…</div>}><Campus3DPage /></Suspense></ProtectedRoute>} />
         <Route path="/complaints/:complaintId" element={<ProtectedRoute roles={['student', 'staff', 'admin']}><ComplaintDetailPage /></ProtectedRoute>} />
         <Route path="/notifications" element={<ProtectedRoute roles={['student', 'staff', 'admin']}><NotificationsPage /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute roles={['student', 'staff', 'admin']}><ProfilePage /></ProtectedRoute>} />

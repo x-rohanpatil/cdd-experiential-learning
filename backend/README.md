@@ -21,36 +21,18 @@ Smart Campus Maintenance and Infrastructure Management System.
 
 API Documentation: http://127.0.0.1:8000/docs
 
-## Admin Campus 3D
-The admin portal includes a lazy-loaded Campus 3D view at `/admin/campus-3d`.
-Building geometry, floors, and legacy complaint-location aliases are configured
-in `app/campus_buildings.json`; replace the example names and positions with
-your campus map before using it operationally. Open-complaint counts use live
-complaint data. Administrators can map existing QR locations to a configured
-building and floor from **Locations**. The analytics endpoint is
-`GET /admin/analytics/buildings` and is restricted to administrators.
+## Location and Floor Mapping
+Administrators can map QR locations to the configured building and floor
+options in `app/campus_buildings.json`. Location names, details, and mappings
+are stored independently, so editing a location preserves its ID and QR URL.
 
-The additive migration adds nullable `building_key` and `floor` fields to
-existing QR locations. Apply it locally before using location mapping:
+The additive migration adds nullable deletion metadata to existing complaints
+and adds any missing building/floor fields to QR locations. It preserves
+existing rows. Apply it before using the updated location and complaint flows:
 
 ```powershell
 python -m app.migrate
 ```
-
-Campus 3D can use a 2D building table when WebGL is not available. To prepare
-demo complaint data, run this from `backend/`:
-
-```powershell
-python seed_campus_demo.py --count 36
-python seed_campus_demo.py --count 36 --apply
-```
-
-The first command is a dry run and makes no database changes. `--apply`
-inserts only missing demo records and is restricted to a PostgreSQL database
-whose host is `localhost`, `127.0.0.1`, or `::1`; it does not delete or update
-records. The script refuses remote database hosts. Demo complaints are marked
-with a `[Demo]` title and a stable description marker so rerunning the seed is
-safe.
 
 ## Production schema migration
 From a PowerShell session in the `backend/` directory, run:
@@ -181,6 +163,8 @@ unset because they are not established by the admission PDF.
 - `POST /auth/login` — admin and maintenance-staff login.
 - `POST /complaints/analyze` — Gemini suggestion (or fallback).
 - `POST /complaints/with-photo` — submit with a before photo.
+- `PATCH /complaints/{complaint_id}` and `/photo` — update an editable report.
+- `DELETE /complaints/{complaint_id}` — soft-delete from active views.
 - `POST /students/{student_id}/complaints/{complaint_id}/verification` — confirm
   or reopen a proof-of-fix request.
 - `GET /complaints/{complaint_id}/activity` — chronological request updates,
@@ -192,8 +176,9 @@ unset because they are not established by the admission PDF.
 - `GET /locations`, `GET/POST /admin/locations` — QR location records.
 - `PATCH /admin/locations/{location_id}/mapping` — map a QR location to a
   configured campus building and floor.
-- `GET /admin/analytics/buildings` — admin-only live complaint analytics for
-  configured buildings, floors, categories, and resolution times.
+- `PATCH /admin/locations/{location_id}` — edit a location name and details.
+- `GET /admin/campus-buildings` — building and floor options for the location
+  editor.
 - `POST /admin/staff/accounts` — create a password-enabled staff account.
 - `GET /sla-config` — current category SLA hours.
 - `GET /admin/departments/counts` — department student counts.

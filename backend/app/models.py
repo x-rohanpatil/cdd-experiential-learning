@@ -53,6 +53,9 @@ class Complaint(Base):
     resolved_at = Column(DateTime(timezone=True), nullable=True)
     verification_deadline = Column(DateTime(timezone=True), nullable=True)
     closed_at = Column(DateTime(timezone=True), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_role = Column(String(20), nullable=True)
+    deleted_by_user_id = Column(Integer, nullable=True)
     student = relationship("Student", back_populates="complaints")
 
 

@@ -3,7 +3,8 @@ import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
 import { ComplaintCard } from '../components/ComplaintCard.jsx'
 import ComplaintFilters from '../components/ComplaintFilters.jsx'
 import ImageUploadField from '../components/ImageUploadField.jsx'
-import { ClipboardCheck } from 'lucide-react'
+import { ClipboardCheck } from '../components/Icons.jsx'
+import { EmptyIllustration, SkeletonLoader } from '../components/StateViews.jsx'
 import { filterComplaints } from '../utils/complaints.js'
 import {
   getApiErrorMessage,
@@ -88,41 +89,45 @@ function StaffTasksPage() {
         <div><p className="eyebrow">YOUR ASSIGNMENTS</p><h2>Maintenance queue</h2></div>
       </div>
       <ComplaintFilters search={search} onSearchChange={setSearch} status={status} onStatusChange={setStatus} />
-      {isLoading && <p className="workspace-empty">Loading assigned tasks…</p>}
+      {isLoading && <SkeletonLoader rows={3} large label="Loading assigned maintenance tasks" />}
       {tasks.length > 0 && filtered.length === 0 && <p className="workspace-empty">No tasks match those filters.</p>}
       <div className="complaint-list">
         {filtered.map((task) => (
           <ComplaintCard key={task.id} complaint={task}>
             {task.status !== 'Closed' && task.status !== 'Resolved' && (
               <div className="task-actions">
-                <button className="button button--secondary" disabled={busyTask === task.id} type="button" onClick={() => updateStatus(task, 'In Progress')}>Start / continue work</button>
-                <ImageUploadField
-                  id={`after-photo-${task.id}`}
-                  label="After photo"
-                  required
-                  value={photos[task.id] ?? null}
-                  onChange={(file) => setPhotos((current) => ({ ...current, [task.id]: file }))}
-                />
-                <label className="form-field">
-                  <span>What did you fix? <span className="feedback-optional">(required)</span></span>
-                  <input
-                    aria-required="true"
-                    maxLength="300"
-                    placeholder="e.g. Replaced the broken light bulb"
-                    type="text"
-                    value={notes[task.id] ?? ''}
-                    onChange={(event) => {
-                      setNotes((current) => ({ ...current, [task.id]: event.target.value }))
-                    }}
-                  />
-                </label>
-                <button className="button button--primary" disabled={busyTask === task.id} type="button" onClick={() => resolve(task)}>{busyTask === task.id ? 'Updating…' : 'Mark resolved'}</button>
+                {task.status === 'Assigned' ? (
+                  <button className="button button--secondary" disabled={busyTask === task.id} type="button" onClick={() => updateStatus(task, 'In Progress')}>{busyTask === task.id ? 'Starting…' : 'Start work'}</button>
+                ) : (
+                  <>
+                    <button className="button button--secondary" disabled={busyTask === task.id} type="button" onClick={() => updateStatus(task, 'In Progress')}>Work in progress</button>
+                    <ImageUploadField
+                      id={`after-photo-${task.id}`}
+                      label="After photo"
+                      required
+                      value={photos[task.id] ?? null}
+                      onChange={(file) => setPhotos((current) => ({ ...current, [task.id]: file }))}
+                    />
+                    <label className="form-field">
+                      <span>What did you fix? <span className="feedback-optional">(required)</span></span>
+                      <input
+                        aria-required="true"
+                        maxLength="300"
+                        placeholder="e.g. Replaced the broken light bulb"
+                        type="text"
+                        value={notes[task.id] ?? ''}
+                        onChange={(event) => setNotes((current) => ({ ...current, [task.id]: event.target.value }))}
+                      />
+                    </label>
+                    <button className="button button--primary" disabled={busyTask === task.id} type="button" onClick={() => resolve(task)}>{busyTask === task.id ? 'Updating…' : 'Mark resolved'}</button>
+                  </>
+                )}
               </div>
             )}
           </ComplaintCard>
         ))}
       </div>
-      {!isLoading && tasks.length === 0 && !error && <div className="empty-state glass-card"><span className="empty-state__icon"><ClipboardCheck size={22} aria-hidden="true" /></span><h2>Your queue is clear</h2><p>New assigned maintenance tasks will appear here.</p></div>}
+      {!isLoading && tasks.length === 0 && !error && <div className="empty-state glass-card"><EmptyIllustration variant="queue" /><span className="empty-state__icon"><ClipboardCheck size={22} aria-hidden="true" /></span><h2>Your queue is clear</h2><p>New assigned maintenance tasks will appear here.</p></div>}
     </WorkspaceLayout>
   )
 }

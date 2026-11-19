@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
+import { EmptyIllustration, SkeletonLoader } from '../components/StateViews.jsx'
 import { ComplaintCard } from '../components/ComplaintCard.jsx'
 import ComplaintFilters from '../components/ComplaintFilters.jsx'
 import { Link } from 'react-router-dom'
-import { filterComplaints } from '../utils/complaints.js'
+import { ACTIVE_COMPLAINT_STATUSES, ASSIGNABLE_COMPLAINT_STATUSES, COMPLETED_COMPLAINT_STATUSES, filterComplaints } from '../utils/complaints.js'
 import {
   assignComplaint,
   createStaffAccount,
@@ -12,9 +13,6 @@ import {
   getApiErrorMessage,
   getStaff,
 } from '../services/api.js'
-
-const OPEN_STATUSES = new Set(['Reported', 'Submitted', 'Assigned', 'In Progress'])
-const COMPLETED_STATUSES = new Set(['Resolved', 'Closed'])
 
 function timestamp(value) {
   const parsed = Date.parse(value)
@@ -102,13 +100,13 @@ function AdminPage() {
   }
 
   const filtered = filterComplaints(complaints, search, status)
-  const activeCount = complaints.filter((item) => OPEN_STATUSES.has(item.status)).length
+  const activeCount = complaints.filter((item) => ACTIVE_COMPLAINT_STATUSES.has(item.status)).length
   const overdueCount = complaints.filter((item) => {
     const dueAt = timestamp(item.due_at)
-    return OPEN_STATUSES.has(item.status) && dueAt !== null && loadedAt !== null && dueAt < loadedAt
+    return ACTIVE_COMPLAINT_STATUSES.has(item.status) && dueAt !== null && loadedAt !== null && dueAt < loadedAt
   }).length
   const resolvedWithDuration = complaints
-    .filter((item) => COMPLETED_STATUSES.has(item.status))
+    .filter((item) => COMPLETED_COMPLAINT_STATUSES.has(item.status))
     .map((item) => {
       const createdAt = timestamp(item.created_at)
       const resolvedAt = timestamp(item.resolved_at)
@@ -121,7 +119,7 @@ function AdminPage() {
     ? resolvedWithDuration.reduce((total, hours) => total + hours, 0) / resolvedWithDuration.length
     : null
   const resolvedWithSla = complaints.filter((item) => {
-    return COMPLETED_STATUSES.has(item.status)
+    return COMPLETED_COMPLAINT_STATUSES.has(item.status)
       && timestamp(item.resolved_at) !== null
       && timestamp(item.due_at) !== null
   })
@@ -206,13 +204,15 @@ function AdminPage() {
           <Link className="text-link" to="/admin/qr-codes">Manage locations</Link>
         </div>
         <ComplaintFilters search={search} onSearchChange={setSearch} status={status} onStatusChange={setStatus} />
-        {isLoading && <p className="workspace-empty">Loading campus complaints…</p>}
+        {isLoading && <SkeletonLoader rows={4} large label="Loading campus complaints" />}
         {complaints.length > 0 && filtered.length === 0 && <p className="workspace-empty">No complaints match those filters.</p>}
         <div className="complaint-list">
         {filtered.map((complaint) => (
           <ComplaintCard key={complaint.id} complaint={complaint}>
             <div className="admin-complaint-actions">
               <span className="admin-escalation">Escalation level <strong>{complaint.escalation_level}</strong></span>
+              {ASSIGNABLE_COMPLAINT_STATUSES.has(complaint.status) ? (
+                <>
               <label className="form-field">
                 <span>Assign to staff</span>
                 <select
@@ -230,12 +230,14 @@ function AdminPage() {
                   ))}
                 </select>
               </label>
-              <button className="button button--secondary" disabled={busyComplaint === complaint.id} type="button" onClick={() => assign(complaint.id)}>{busyComplaint === complaint.id ? 'Assigning…' : 'Assign to staff'}</button>
+              <button className="button button--secondary" disabled={busyComplaint === complaint.id || !staff.length} type="button" onClick={() => assign(complaint.id)}>{busyComplaint === complaint.id ? 'Assigning…' : complaint.staff_id ? 'Reassign complaint' : 'Assign to staff'}</button>
+                </>
+              ) : <span className="admin-assignment-note">{complaint.status === 'Resolved' ? 'Awaiting student confirmation' : complaint.status}</span>}
             </div>
           </ComplaintCard>
         ))}
         </div>
-        {!isLoading && complaints.length === 0 && !error && <p className="workspace-empty">No complaints have been reported.</p>}
+        {!isLoading && complaints.length === 0 && !error && <div className="empty-state"><EmptyIllustration variant="request" /><h2>No complaints to review</h2><p>New campus reports will appear here for assignment.</p></div>}
       </section>
     </WorkspaceLayout>
   )

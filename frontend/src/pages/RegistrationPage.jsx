@@ -50,6 +50,7 @@ function RegistrationPage() {
     <AuthLayout pageClassName="registration-page">
       <div className="auth-card auth-card--registration">
         <header className="auth-heading">
+          <p className="eyebrow">CAMPUS OPERATIONS / NEW ACCOUNT</p>
           <h2>Create your account</h2>
           <p>Use your admission USN to create your account</p>
         </header>
@@ -105,7 +106,7 @@ function RegistrationPage() {
         </form>
 
         <p className="auth-terms">
-          By continuing, you agree to the campus digital policy.
+          By continuing, you agree to the campus digital policy. <a href="#terms">Terms</a> · <a href="#privacy">Privacy</a>
         </p>
         <p className="auth-switch">
           Already registered? <Link to="/login">Sign in</Link>

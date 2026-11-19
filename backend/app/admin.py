@@ -1,6 +1,3 @@
-from collections import Counter, defaultdict
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -11,20 +8,20 @@ from app.auth import hash_password
 from app.campus import (
     building_by_key,
     campus_buildings,
-    match_building,
-    match_floor,
-    normalize_location,
 )
 from app.database import get_db
 from app.notifications import add_notification
 from app.security import Principal, require_roles
-from app.sla import UNRESOLVED_STATUSES
+from app.statuses import (
+    ASSIGNABLE_STATUSES,
+    ASSIGNED,
+    COMPLAINT_TRANSITIONS,
+    REPORTED,
+    SUBMITTED_LEGACY,
+)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 admin_only = require_roles("admin")
-COMPLETED_STATUSES = {"Resolved", "Closed"}
-
-
 def _validate_location_mapping(building_key: str | None, floor: str | None) -> None:
     if building_key is None:
         if floor is not None:
@@ -37,53 +34,6 @@ def _validate_location_mapping(building_key: str | None, floor: str | None) -> N
         raise HTTPException(status_code=400, detail="Floor is not part of the selected building")
 
 
-def _resolve_location(
-    value: str,
-    qr_locations: list[models.Location],
-) -> tuple[dict | None, str]:
-    normalized = normalize_location(value)
-    padded_value = f" {normalized} "
-    qr_matches = []
-    for location in qr_locations:
-        name = normalize_location(location.name)
-        if not name or f" {name} " not in padded_value:
-            continue
-        building = building_by_key(location.building_key) or match_building(
-            f"{location.name} {location.details or ''}"
-        )
-        if building is None:
-            continue
-        floor = (
-            location.floor
-            if location.floor in building["floors"]
-            else match_floor(f"{value} {location.details or ''}", building)
-        )
-        qr_matches.append((len(name), building, floor))
-    if qr_matches:
-        _, building, floor = max(qr_matches, key=lambda match: match[0])
-        return building, floor
-
-    building = match_building(value)
-    if building is None:
-        return None, "Unknown"
-    return building, match_floor(value, building)
-
-
-def _average_hours(durations: list[float]) -> float | None:
-    if not durations:
-        return None
-    return round(sum(durations) / len(durations), 2)
-
-
-def _duration_hours(start: datetime, end: datetime) -> float | None:
-    if start.tzinfo is None:
-        start = start.replace(tzinfo=timezone.utc)
-    if end.tzinfo is None:
-        end = end.replace(tzinfo=timezone.utc)
-    elapsed = (end - start).total_seconds() / 3600
-    return elapsed if elapsed >= 0 else None
-
-
 @router.get("/complaints")
 def view_all_complaints(
     db: Session = Depends(get_db),
@@ -91,124 +41,18 @@ def view_all_complaints(
 ):
     complaints = (
         db.query(models.Complaint)
+        .filter(models.Complaint.deleted_at.is_(None))
         .order_by(models.Complaint.created_at.desc())
         .all()
     )
     return {"total": len(complaints), "complaints": complaints}
 
 
-@router.get("/analytics/buildings")
-def building_analytics(
-    db: Session = Depends(get_db),
+@router.get("/campus-buildings")
+def list_campus_buildings(
     _: Principal = Depends(admin_only),
 ):
-    buildings = campus_buildings()
-    qr_locations = db.query(models.Location).all()
-    metrics = {}
-    for building in buildings:
-        metrics[building["key"]] = {
-            **building,
-            "open_complaint_count": 0,
-            "floor_counts": Counter({floor: 0 for floor in building["floors"]}),
-            "category_counts": Counter(),
-            "resolution_hours": [],
-            "recent_complaints": [],
-        }
-
-    unmapped = Counter()
-    open_total = 0
-    resolution_hours = []
-    complaints = (
-        db.query(models.Complaint)
-        .order_by(models.Complaint.created_at.desc(), models.Complaint.id.desc())
-        .all()
-    )
-    for complaint in complaints:
-        building, floor = _resolve_location(complaint.location, qr_locations)
-        is_open = complaint.status in UNRESOLVED_STATUSES
-        if is_open:
-            open_total += 1
-        duration = None
-        if (
-            complaint.status in COMPLETED_STATUSES
-            and complaint.resolved_at is not None
-        ):
-            duration = _duration_hours(complaint.created_at, complaint.resolved_at)
-            if duration is not None:
-                resolution_hours.append(duration)
-        if building is None:
-            if is_open:
-                unmapped[complaint.location] += 1
-            continue
-
-        item = metrics[building["key"]]
-        if len(item["recent_complaints"]) < 8:
-            item["recent_complaints"].append({
-                "id": complaint.id,
-                "title": complaint.title,
-                "status": complaint.status,
-                "category": complaint.category,
-                "location": complaint.location,
-                "priority": complaint.priority,
-                "created_at": complaint.created_at,
-                "floor": floor,
-            })
-        if is_open:
-            item["open_complaint_count"] += 1
-            item["floor_counts"][floor] += 1
-            item["category_counts"][complaint.category] += 1
-
-        if duration is not None:
-            item["resolution_hours"].append(duration)
-
-    result = []
-    mapped_open_total = 0
-    for building in buildings:
-        item = metrics[building["key"]]
-        mapped_open_total += item["open_complaint_count"]
-        floor_counts = [
-            {"floor": floor, "open_complaint_count": item["floor_counts"][floor]}
-            for floor in building["floors"]
-        ]
-        if item["floor_counts"]["Unknown"]:
-            floor_counts.append({
-                "floor": "Unknown",
-                "open_complaint_count": item["floor_counts"]["Unknown"],
-            })
-        result.append({
-            "key": item["key"],
-            "name": item["name"],
-            "position": item["position"],
-            "size": item["size"],
-            "floors": item["floors"],
-            "location_aliases": item["location_aliases"],
-            "open_complaint_count": item["open_complaint_count"],
-            "floor_counts": floor_counts,
-            "category_counts": [
-                {"category": category, "open_complaint_count": count}
-                for category, count in sorted(
-                    item["category_counts"].items(),
-                    key=lambda entry: (-entry[1], entry[0]),
-                )
-            ],
-            "average_resolution_hours": _average_hours(item["resolution_hours"]),
-            "recent_complaints": item["recent_complaints"],
-        })
-
-    return {
-        "generated_at": datetime.now(timezone.utc),
-        "totals": {
-            "open_complaints": open_total,
-            "mapped_open_complaints": mapped_open_total,
-            "unmapped_open_complaints": sum(unmapped.values()),
-            "average_resolution_hours": _average_hours(resolution_hours),
-        },
-        "buildings": result,
-        "unmapped_locations": [
-            {"location": location, "open_complaint_count": count}
-            for location, count in unmapped.most_common(10)
-        ],
-    }
+    return {"buildings": campus_buildings()}
 
 
 @router.patch("/complaints/{complaint_id}/status")
@@ -218,23 +62,22 @@ def update_complaint_status(
     db: Session = Depends(get_db),
     _: Principal = Depends(admin_only),
 ):
-    allowed_statuses = ["Reported", "Submitted", "Assigned", "In Progress"]
-    if status not in allowed_statuses:
+    if status != ASSIGNED:
         raise HTTPException(
             status_code=400,
-            detail="Admin cannot mark a task resolved without staff proof of fix",
+            detail="Use staff assignment to move a reported complaint to Assigned",
         )
     complaint = db.query(models.Complaint).filter(
-        models.Complaint.id == complaint_id
+        models.Complaint.id == complaint_id,
+        models.Complaint.deleted_at.is_(None),
     ).first()
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
-    if complaint.status in ("Resolved", "Closed"):
-        raise HTTPException(
-            status_code=409,
-            detail="Resolved complaints must follow student verification",
-        )
-    if status == "Assigned" and complaint.staff_id is None:
+    if (
+        status not in COMPLAINT_TRANSITIONS.get(complaint.status, frozenset())
+        or complaint.status not in (REPORTED, SUBMITTED_LEGACY)
+        or complaint.staff_id is None
+    ):
         raise HTTPException(
             status_code=409,
             detail="Assign the complaint to a staff member before setting Assigned",
@@ -245,11 +88,19 @@ def update_complaint_status(
         record_complaint_activity(
             db,
             complaint.id,
-            kind="status_change",
+            kind="assignment",
             actor_role="admin",
-            message=f"An administrator updated the status to {status}.",
+            message="Assigned to the maintenance team.",
             from_status=previous_status,
             to_status=status,
+        )
+        add_notification(
+            db,
+            target_role="staff",
+            target_user_id=complaint.staff_id,
+            complaint_id=complaint.id,
+            kind="assignment",
+            message=f"Complaint #{complaint.id} has been assigned to you.",
         )
     db.commit()
     db.refresh(complaint)
@@ -385,11 +236,15 @@ def assign_complaint(
     _: Principal = Depends(admin_only),
 ):
     complaint = db.query(models.Complaint).filter(
-        models.Complaint.id == complaint_id
+        models.Complaint.id == complaint_id,
+        models.Complaint.deleted_at.is_(None),
     ).first()
     if not complaint:
         raise HTTPException(status_code=404, detail="Complaint not found")
-    if complaint.status not in ("Reported", "Submitted", "Assigned"):
+    if complaint.status not in ASSIGNABLE_STATUSES or (
+        complaint.status != ASSIGNED
+        and ASSIGNED not in COMPLAINT_TRANSITIONS.get(complaint.status, frozenset())
+    ):
         raise HTTPException(status_code=409, detail="Only reported complaints can be assigned")
     staff = db.query(models.Staff).filter(models.Staff.id == staff_id).first()
     if not staff:
@@ -397,7 +252,7 @@ def assign_complaint(
 
     previous_status = complaint.status
     complaint.staff_id = staff.id
-    complaint.status = "Assigned"
+    complaint.status = ASSIGNED
     record_complaint_activity(
         db,
         complaint.id,
@@ -405,7 +260,7 @@ def assign_complaint(
         actor_role="admin",
         message="Assigned to the maintenance team.",
         from_status=previous_status,
-        to_status="Assigned",
+        to_status=ASSIGNED,
     )
     add_notification(
         db,
@@ -432,9 +287,11 @@ def create_location(
     _: Principal = Depends(admin_only),
 ):
     _validate_location_mapping(request.building_key, request.floor)
+    if not request.name.strip():
+        raise HTTPException(status_code=422, detail="Location name cannot be empty")
     location = models.Location(
         name=request.name.strip(),
-        details=request.details,
+        details=request.details.strip() if request.details else None,
         building_key=request.building_key,
         floor=request.floor,
     )
@@ -471,6 +328,36 @@ def update_location_mapping(
     return {
         "id": location.id,
         "name": location.name,
+        "building_key": location.building_key,
+        "floor": location.floor,
+    }
+
+
+@router.patch("/locations/{location_id}")
+def update_location(
+    location_id: int,
+    request: schemas.LocationUpdate,
+    db: Session = Depends(get_db),
+    _: Principal = Depends(admin_only),
+):
+    location = db.get(models.Location, location_id)
+    if location is None:
+        raise HTTPException(status_code=404, detail="Location not found")
+    name = request.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Location name cannot be empty")
+    location.name = name
+    location.details = request.details.strip() if request.details else None
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Location already exists") from error
+    db.refresh(location)
+    return {
+        "id": location.id,
+        "name": location.name,
+        "details": location.details,
         "building_key": location.building_key,
         "floor": location.floor,
     }

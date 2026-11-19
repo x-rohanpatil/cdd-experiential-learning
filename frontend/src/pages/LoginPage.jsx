@@ -55,6 +55,7 @@ function LoginPage() {
     <AuthLayout pageClassName="login-page">
       <div className="auth-card">
         <header className="auth-heading">
+          <p className="eyebrow">CAMPUS OPERATIONS / ACCOUNT ACCESS</p>
           <h2>Sign in to CampusFix</h2>
           <p>Access your campus maintenance workspace</p>
         </header>

@@ -33,6 +33,14 @@ from app.security import (
     require_roles,
     verify_admin_credentials,
 )
+from app.statuses import (
+    ASSIGNED,
+    CLOSED,
+    COMPLAINT_TRANSITIONS,
+    IN_PROGRESS,
+    RESOLVED,
+    STUDENT_EDITABLE_STATUSES,
+)
 from app.sla import SLA_HOURS, deadline_for, run_sla_cycle
 from app.uploads import delete_image, get_image, read_image, save_image
 
@@ -79,7 +87,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins(),
-    allow_methods=["GET", "POST", "PATCH", "PUT", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -254,6 +262,37 @@ def _create_complaint(
         raise
 
 
+def _visible_complaint_query(db: Session):
+    return db.query(models.Complaint).filter(models.Complaint.deleted_at.is_(None))
+
+
+def _editable_complaint(
+    db: Session, complaint_id: int, principal: Principal
+) -> models.Complaint:
+    complaint = (
+        _visible_complaint_query(db)
+        .filter(models.Complaint.id == complaint_id)
+        .with_for_update()
+        .first()
+    )
+    if complaint is None or (
+        principal.role == "student" and complaint.student_id != principal.user_id
+    ):
+        raise HTTPException(status_code=404, detail="Complaint not found")
+    if principal.role == "staff":
+        raise HTTPException(status_code=403, detail="Staff cannot edit complaint details")
+    if complaint.status in (RESOLVED, CLOSED):
+        raise HTTPException(status_code=409, detail="Resolved complaints cannot be edited")
+    if principal.role == "student" and (
+        complaint.status not in STUDENT_EDITABLE_STATUSES or complaint.staff_id is not None
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="You can edit a complaint before it is assigned to staff",
+        )
+    return complaint
+
+
 @app.post("/complaints", response_model=schemas.ComplaintResponse)
 def create_complaint(
     complaint: schemas.ComplaintCreate,
@@ -315,8 +354,126 @@ def get_complaints(
     db: Session = Depends(get_db),
     _: Principal = Depends(require_roles("admin")),
 ):
-    complaints = db.query(models.Complaint).order_by(models.Complaint.created_at.desc()).all()
+    complaints = _visible_complaint_query(db).order_by(models.Complaint.created_at.desc()).all()
     return {"total": len(complaints), "complaints": complaints}
+
+
+@app.patch("/complaints/{complaint_id}", response_model=schemas.ComplaintResponse)
+def update_complaint(
+    complaint_id: int,
+    request: schemas.ComplaintUpdate,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_roles("student", "admin", "staff")),
+):
+    complaint = _editable_complaint(db, complaint_id, principal)
+    changed = request.model_dump(exclude_unset=True)
+    if not changed:
+        raise HTTPException(status_code=400, detail="Provide at least one complaint field to update")
+    for field, value in changed.items():
+        if value is None:
+            raise HTTPException(status_code=422, detail=f"{field.replace('_', ' ').capitalize()} cannot be empty")
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise HTTPException(status_code=422, detail=f"{field.replace('_', ' ').capitalize()} cannot be empty")
+        setattr(complaint, field, value)
+    if "category" in changed:
+        complaint.due_at = deadline_for(complaint.category, complaint.created_at)
+    record_complaint_activity(
+        db,
+        complaint.id,
+        kind="edited",
+        actor_role=principal.role,
+        message="The complaint details were updated.",
+        created_at=datetime.now(timezone.utc),
+    )
+    db.commit()
+    db.refresh(complaint)
+    return complaint
+
+
+@app.patch("/complaints/{complaint_id}/photo", response_model=schemas.ComplaintResponse)
+async def update_complaint_photo(
+    complaint_id: int,
+    photo: UploadFile | None = File(default=None),
+    remove_photo: bool = Form(default=False),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_roles("student", "admin", "staff")),
+):
+    complaint = _editable_complaint(db, complaint_id, principal)
+    if (photo is None) == (not remove_photo):
+        raise HTTPException(status_code=400, detail="Upload a replacement photo or request photo removal")
+    old_path = complaint.before_photo_path
+    new_path = None
+    if photo is not None:
+        image, mime_type = await read_image(photo)
+        if image is None or mime_type is None:
+            raise HTTPException(status_code=400, detail="A photo is required")
+        new_path = save_image(image, mime_type)
+    complaint.before_photo_path = new_path
+    record_complaint_activity(
+        db,
+        complaint.id,
+        kind="edited",
+        actor_role=principal.role,
+        message="The complaint photo was updated." if new_path else "The complaint photo was removed.",
+        created_at=datetime.now(timezone.utc),
+    )
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        delete_image(new_path)
+        raise
+    if old_path and old_path != new_path:
+        try:
+            delete_image(old_path)
+        except Exception:
+            logger.exception("Could not remove replaced complaint photo %s", old_path)
+    db.refresh(complaint)
+    return complaint
+
+
+@app.delete("/complaints/{complaint_id}")
+def delete_complaint(
+    complaint_id: int,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_roles("student", "admin", "staff")),
+):
+    complaint = (
+        _visible_complaint_query(db)
+        .filter(models.Complaint.id == complaint_id)
+        .with_for_update()
+        .first()
+    )
+    if complaint is None or (
+        principal.role == "student" and complaint.student_id != principal.user_id
+    ):
+        raise HTTPException(status_code=404, detail="Complaint not found")
+    if principal.role == "staff":
+        raise HTTPException(status_code=403, detail="Staff cannot delete complaints")
+    if principal.role == "student" and (
+        complaint.status not in STUDENT_EDITABLE_STATUSES or complaint.staff_id is not None
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="You can delete a complaint only before it is assigned to staff",
+        )
+    now = datetime.now(timezone.utc)
+    record_complaint_activity(
+        db,
+        complaint.id,
+        kind="deleted",
+        actor_role=principal.role,
+        message="The complaint was removed from active views.",
+        from_status=complaint.status,
+        created_at=now,
+    )
+    complaint.deleted_at = now
+    complaint.deleted_by_role = principal.role
+    complaint.deleted_by_user_id = principal.user_id
+    db.commit()
+    return {"complaint_id": complaint_id, "deleted": True}
 
 
 @app.get(
@@ -328,7 +485,7 @@ def get_complaint_activity(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_roles("student", "staff", "admin")),
 ):
-    complaint = db.get(models.Complaint, complaint_id)
+    complaint = _visible_complaint_query(db).filter(models.Complaint.id == complaint_id).first()
     if complaint is None or (
         principal.role == "student" and complaint.student_id != principal.user_id
     ) or (
@@ -349,7 +506,7 @@ def _student_confirmed_closure(db: Session, complaint_id: int) -> bool:
         db.query(models.ComplaintActivity.actor_role)
         .filter(
             models.ComplaintActivity.complaint_id == complaint_id,
-            models.ComplaintActivity.to_status == "Closed",
+            models.ComplaintActivity.to_status == CLOSED,
         )
         .order_by(
             models.ComplaintActivity.created_at.desc(),
@@ -369,7 +526,7 @@ def get_complaint_feedback(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_roles("student", "admin")),
 ):
-    complaint = db.get(models.Complaint, complaint_id)
+    complaint = _visible_complaint_query(db).filter(models.Complaint.id == complaint_id).first()
     if complaint is None or (
         principal.role == "student" and complaint.student_id != principal.user_id
     ):
@@ -383,7 +540,7 @@ def get_complaint_feedback(
     return {
         "eligible": (
             principal.role == "student"
-            and complaint.status == "Closed"
+            and complaint.status == CLOSED
             and _student_confirmed_closure(db, complaint_id)
         ),
         "feedback": feedback,
@@ -406,13 +563,14 @@ def submit_complaint_feedback(
         .filter(
             models.Complaint.id == complaint_id,
             models.Complaint.student_id == principal.user_id,
+            models.Complaint.deleted_at.is_(None),
         )
         .with_for_update()
         .first()
     )
     if complaint is None:
         raise HTTPException(status_code=404, detail="Complaint not found")
-    if complaint.status != "Closed" or not _student_confirmed_closure(db, complaint_id):
+    if complaint.status != CLOSED or not _student_confirmed_closure(db, complaint_id):
         raise HTTPException(
             status_code=409,
             detail="Feedback is available after you confirm the repair.",
@@ -454,6 +612,7 @@ def get_student_complaints(
     complaints = (
         db.query(models.Complaint)
         .filter(models.Complaint.student_id == student_id)
+        .filter(models.Complaint.deleted_at.is_(None))
         .order_by(models.Complaint.created_at.desc())
         .all()
     )
@@ -471,6 +630,7 @@ def get_staff_tasks(
     complaints = (
         db.query(models.Complaint)
         .filter(models.Complaint.staff_id == staff_id)
+        .filter(models.Complaint.deleted_at.is_(None))
         .order_by(models.Complaint.due_at.asc())
         .all()
     )
@@ -489,32 +649,30 @@ async def staff_update_status(
 ):
     if staff_id != principal.user_id:
         raise HTTPException(status_code=403, detail="Cannot update another staff member's task")
-    if status not in ("In Progress", "Resolved"):
+    if status not in (IN_PROGRESS, RESOLVED):
         raise HTTPException(status_code=400, detail="Staff can set status to In Progress or Resolved")
     complaint = (
         db.query(models.Complaint)
         .filter(
             models.Complaint.id == complaint_id,
             models.Complaint.staff_id == staff_id,
+            models.Complaint.deleted_at.is_(None),
         )
         .with_for_update()
         .first()
     )
     if complaint is None:
         raise HTTPException(status_code=404, detail="Assigned complaint not found")
-    if status == "In Progress" and complaint.status not in ("Assigned", "In Progress"):
+    if status == IN_PROGRESS and complaint.status not in (ASSIGNED, IN_PROGRESS):
+        raise HTTPException(status_code=409, detail="Only assigned tasks can be started or continued")
+    if status != complaint.status and status not in COMPLAINT_TRANSITIONS.get(complaint.status, frozenset()):
         raise HTTPException(
             status_code=409,
-            detail="Only assigned tasks can be started or continued",
-        )
-    if status == "Resolved" and complaint.status not in ("Assigned", "In Progress"):
-        raise HTTPException(
-            status_code=409,
-            detail="Only assigned tasks in progress can be resolved",
+            detail="This complaint cannot make that status transition",
         )
 
     photo_data = await read_image(after_photo)
-    if status == "Resolved" and (photo_data[0] is None or not note or not note.strip()):
+    if status == RESOLVED and (photo_data[0] is None or not note or not note.strip()):
         raise HTTPException(
             status_code=400,
             detail="An after photo and resolution note are required to resolve a task",
@@ -532,14 +690,14 @@ async def staff_update_status(
             actor_role="staff",
             message=(
                 "Work has started on this request."
-                if status == "In Progress"
+                if status == IN_PROGRESS
                 else "The repair was marked complete. Please confirm it works."
             ),
             from_status=previous_status,
             to_status=status,
             created_at=now,
         )
-    if status == "Resolved":
+    if status == RESOLVED:
         complaint.after_photo_path = new_photo_path
         complaint.resolution_note = note.strip()
         complaint.resolved_at = now
@@ -580,7 +738,8 @@ def verify_resolution(
         .filter(
             models.Complaint.id == complaint_id,
             models.Complaint.student_id == student_id,
-            models.Complaint.status == "Resolved",
+            models.Complaint.status == RESOLVED,
+            models.Complaint.deleted_at.is_(None),
         )
         .with_for_update()
         .first()
@@ -593,13 +752,13 @@ def verify_resolution(
     if verification_deadline and verification_deadline.tzinfo is None:
         verification_deadline = verification_deadline.replace(tzinfo=timezone.utc)
     if verification_deadline and verification_deadline <= now:
-        complaint.status = "Closed"
+        complaint.status = CLOSED
         complaint.closed_at = now
     elif request.action == "confirm":
-        complaint.status = "Closed"
+        complaint.status = CLOSED
         complaint.closed_at = now
     else:
-        complaint.status = "In Progress"
+        complaint.status = IN_PROGRESS
         complaint.resolved_at = None
         complaint.verification_deadline = None
         complaint.closed_at = None
@@ -644,7 +803,12 @@ def get_notifications(
     db: Session = Depends(get_db),
     principal: Principal = Depends(require_roles("student", "staff", "admin")),
 ):
-    query = db.query(models.Notification)
+    query = db.query(models.Notification).outerjoin(
+        models.Complaint, models.Notification.complaint_id == models.Complaint.id
+    ).filter(
+        (models.Notification.complaint_id.is_(None))
+        | (models.Complaint.deleted_at.is_(None))
+    )
     if principal.role == "admin":
         query = query.filter(models.Notification.target_role == "admin")
     else:
@@ -684,6 +848,7 @@ def get_complaint_photo(
     principal: Principal = Depends(require_roles("student", "staff", "admin")),
 ):
     query = db.query(models.Complaint).filter(
+        models.Complaint.deleted_at.is_(None),
         (models.Complaint.before_photo_path == filename)
         | (models.Complaint.after_photo_path == filename)
     )

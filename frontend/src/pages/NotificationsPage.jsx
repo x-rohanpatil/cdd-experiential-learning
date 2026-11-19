@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Bell, Check, Circle } from 'lucide-react'
+import { Bell, Check, Circle } from '../components/Icons.jsx'
 import { Link } from 'react-router-dom'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
+import { EmptyIllustration, SkeletonLoader } from '../components/StateViews.jsx'
 import { getApiErrorMessage, getNotifications, markNotificationRead } from '../services/api.js'
 
 function NotificationsPage() {
@@ -31,6 +32,7 @@ function NotificationsPage() {
     try {
       await markNotificationRead(id)
       setNotifications((items) => items.map((item) => item.id === id ? { ...item, read: true } : item))
+      window.dispatchEvent(new Event('campusfix:notifications-updated'))
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, 'Unable to update this notification.'))
     } finally {
@@ -50,9 +52,10 @@ function NotificationsPage() {
         </span>
       </div>
       {error && <p className="form-message form-message--error" role="alert">{error}</p>}
-      {isLoading && <p className="workspace-empty">Loading notifications…</p>}
+      {isLoading && <SkeletonLoader rows={4} label="Loading notifications" />}
       {!isLoading && !error && notifications.length === 0 && (
         <div className="empty-state glass-card">
+          <EmptyIllustration variant="updates" />
           <span className="empty-state__icon"><Bell size={22} aria-hidden="true" /></span>
           <h2>You’re all caught up</h2>
           <p>New updates about your requests will appear here.</p>
