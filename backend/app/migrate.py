@@ -16,6 +16,9 @@ COMPLAINT_COLUMNS = {
     "resolved_at": "TIMESTAMPTZ",
     "verification_deadline": "TIMESTAMPTZ",
     "closed_at": "TIMESTAMPTZ",
+    "deleted_at": "TIMESTAMPTZ",
+    "deleted_by_role": "VARCHAR(20)",
+    "deleted_by_user_id": "INTEGER",
 }
 SAFE_ADDITIVE_COLUMNS = {
     ("students", "department"): "VARCHAR(50)",
@@ -197,6 +200,12 @@ def migrate() -> None:
             text(
                 "CREATE INDEX IF NOT EXISTS ix_complaints_due_at "
                 "ON public.complaints (due_at)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_complaints_deleted_at "
+                "ON public.complaints (deleted_at)"
             )
         )
         has_unique_usn = any(

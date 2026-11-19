@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ArrowLeft, CalendarDays, MapPin, Star, Tag } from '../components/Icons.jsx'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
 import { ComplaintCard } from '../components/ComplaintCard.jsx'
 import { SkeletonLoader } from '../components/StateViews.jsx'
@@ -11,9 +11,13 @@ import {
   getComplaintFeedback,
   getStaffTasks,
   getStudentComplaints,
+  updateComplaint,
+  updateComplaintPhoto,
+  deleteComplaint,
   submitComplaintFeedback,
   verifyComplaint,
 } from '../services/api.js'
+import { STUDENT_EDITABLE_COMPLAINT_STATUSES } from '../utils/complaints.js'
 
 const ACTOR_LABELS = {
   student: 'You',
@@ -93,6 +97,7 @@ function ComplaintDetailPage() {
   const authId = auth.id
   const authRole = auth.role
   const { complaintId } = useParams()
+  const navigate = useNavigate()
   const [complaint, setComplaint] = useState(null)
   const [activity, setActivity] = useState([])
   const [activityError, setActivityError] = useState('')
@@ -106,6 +111,11 @@ function ComplaintDetailPage() {
   const [busy, setBusy] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const [isEditing, setIsEditing] = useState(false)
+  const [editDraft, setEditDraft] = useState(null)
+  const [editPhoto, setEditPhoto] = useState(null)
+  const [removePhoto, setRemovePhoto] = useState(false)
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -175,7 +185,64 @@ function ComplaintDetailPage() {
     }
   }
 
+  function beginEdit() {
+    setEditDraft({
+      title: complaint.title,
+      description: complaint.description,
+      category: complaint.category,
+      priority: complaint.priority,
+      location: complaint.location,
+    })
+    setEditPhoto(null)
+    setRemovePhoto(false)
+    setError('')
+    setIsEditing(true)
+  }
+
+  async function saveEdit(event) {
+    event.preventDefault()
+    setError('')
+    setIsSavingEdit(true)
+    try {
+      let updated = await updateComplaint(complaint.id, editDraft)
+      setComplaint(updated.data)
+      if (editPhoto || removePhoto) {
+        updated = await updateComplaintPhoto(complaint.id, editPhoto, removePhoto)
+      }
+      const result = await fetchComplaintData({ id: authId, role: authRole }, complaintId)
+      setComplaint(updated.data)
+      setActivity(result.activity)
+      setIsEditing(false)
+      setMessage('Complaint details saved.')
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError, 'Unable to save complaint details.'))
+    } finally {
+      setIsSavingEdit(false)
+    }
+  }
+
+  async function removeComplaint() {
+    const confirmed = window.confirm(`Delete complaint #${complaint.id}? It will be removed from active views, while its record and history remain preserved.`)
+    if (!confirmed) return
+    setBusy(true)
+    setError('')
+    try {
+      await deleteComplaint(complaint.id)
+      navigate(backPath, { replace: true })
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError, 'Unable to delete this complaint.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const backPath = authRole === 'admin' ? '/admin' : authRole === 'staff' ? '/staff/tasks' : '/tracking'
+  const canEdit = authRole === 'admin'
+    ? !['Resolved', 'Closed'].includes(complaint?.status)
+    : authRole === 'student' && STUDENT_EDITABLE_COMPLAINT_STATUSES.has(complaint?.status) && !complaint?.staff_id
+  const canDelete = authRole === 'admin' || (
+    authRole === 'student' && STUDENT_EDITABLE_COMPLAINT_STATUSES.has(complaint?.status) && !complaint?.staff_id
+  )
   const existingFeedback = feedbackStatus?.feedback
   const showFeedback = complaint?.status === 'Closed' && (
     (authRole === 'student' && (feedbackStatus?.eligible || existingFeedback || feedbackError))
@@ -192,6 +259,31 @@ function ComplaintDetailPage() {
         <div className="complaint-detail-layout">
           <div className="complaint-detail-main">
             <ComplaintCard complaint={complaint} />
+            {(canEdit || canDelete) && !isEditing && (
+              <div className="complaint-management-actions">
+                {canEdit && <button className="button button--secondary" type="button" onClick={beginEdit}>Edit complaint</button>}
+                {canDelete && <button className="button button--danger" disabled={busy} type="button" onClick={removeComplaint}>Delete complaint</button>}
+              </div>
+            )}
+            {isEditing && (
+              <form className="workspace-panel workspace-form complaint-edit-form" onSubmit={saveEdit}>
+                <div className="section-heading"><div><p className="eyebrow">EDIT REQUEST</p><h2>Correct the details</h2></div></div>
+                <label className="form-field"><span>Issue title</span><input required maxLength="200" value={editDraft.title} onChange={(event) => setEditDraft((current) => ({ ...current, title: event.target.value }))} /></label>
+                <label className="form-field"><span>Description</span><textarea required maxLength="10000" value={editDraft.description} onChange={(event) => setEditDraft((current) => ({ ...current, description: event.target.value }))} /></label>
+                <div className="complaint-edit-form__row">
+                  <label className="form-field"><span>Category</span><select value={editDraft.category} onChange={(event) => setEditDraft((current) => ({ ...current, category: event.target.value }))}>{['Electrical', 'Plumbing', 'Furniture', 'Network', 'AV Equipment', 'Washroom', 'Other'].map((item) => <option key={item}>{item}</option>)}</select></label>
+                  <label className="form-field"><span>Priority</span><select value={editDraft.priority} onChange={(event) => setEditDraft((current) => ({ ...current, priority: event.target.value }))}>{['low', 'medium', 'high', 'critical'].map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+                </div>
+                <label className="form-field"><span>Campus location</span><input required maxLength="200" value={editDraft.location} onChange={(event) => setEditDraft((current) => ({ ...current, location: event.target.value }))} /></label>
+                {complaint.before_photo_path && <label className="form-check"><input checked={removePhoto} type="checkbox" onChange={(event) => setRemovePhoto(event.target.checked)} /><span>Remove current photo</span></label>}
+                <label className="form-field"><span>{complaint.before_photo_path ? 'Replace photo (optional)' : 'Add a photo (optional)'}</span><input accept="image/jpeg,image/png,image/webp" type="file" onChange={(event) => { setEditPhoto(event.target.files?.[0] || null); setRemovePhoto(false) }} /></label>
+                {error && <p className="form-message form-message--error" role="alert">{error}</p>}
+                <div className="complaint-management-actions">
+                  <button className="button button--primary" disabled={isSavingEdit} type="submit">{isSavingEdit ? 'Saving…' : 'Save changes'}</button>
+                  <button className="button button--secondary" disabled={isSavingEdit} type="button" onClick={() => setIsEditing(false)}>Cancel</button>
+                </div>
+              </form>
+            )}
             <section className="activity-panel glass-card" aria-labelledby="activity-heading">
               <div className="section-heading">
                 <div>

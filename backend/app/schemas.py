@@ -41,6 +41,22 @@ class ComplaintResponse(BaseModel):
     closed_at: datetime | None = None
 
 
+class ComplaintUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, min_length=1, max_length=10000)
+    category: Literal[
+        "Electrical", "Plumbing", "Furniture", "Network",
+        "AV Equipment", "Washroom", "Other",
+    ] | None = None
+    location: str | None = Field(default=None, min_length=1, max_length=200)
+    priority: Literal["low", "medium", "high", "critical"] | None = None
+
+
+class LocationUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=150)
+    details: str | None = Field(default=None, max_length=1000)
+
+
 class ComplaintActivityResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -3,75 +3,55 @@
     {
       "key": "academic",
       "name": "Academic Block",
-      "position": [-7, 0, -4],
-      "size": [4.8, 3.2, 4.6],
-      "floors": ["Ground", "1", "2", "3"],
-      "location_aliases": ["Academic Block", "Main Block", "Block A", "AB"],
-      "floor_aliases": {
-        "Ground": ["ground floor", "floor 0", "level 0"],
-        "1": ["first floor", "1st floor", "floor 1", "level 1"],
-        "2": ["second floor", "2nd floor", "floor 2", "level 2"],
-        "3": ["third floor", "3rd floor", "floor 3", "level 3"]
-      }
+      "floors": [
+        "Ground",
+        "1",
+        "2",
+        "3"
+      ]
     },
     {
       "key": "library",
       "name": "Library",
-      "position": [-1.5, 0, -6],
-      "size": [3.8, 4, 3.8],
-      "floors": ["Ground", "1", "2", "3", "4"],
-      "location_aliases": ["Library", "Learning Resource Center", "LRC"],
-      "floor_aliases": {
-        "Ground": ["ground floor", "floor 0", "level 0"],
-        "1": ["first floor", "1st floor", "floor 1", "level 1"],
-        "2": ["second floor", "2nd floor", "floor 2", "level 2"],
-        "3": ["third floor", "3rd floor", "floor 3", "level 3"],
-        "4": ["fourth floor", "4th floor", "floor 4", "level 4"]
-      }
+      "floors": [
+        "Ground",
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
     },
     {
       "key": "engineering",
       "name": "Engineering Block",
-      "position": [4.5, 0, -4],
-      "size": [5, 4, 4.5],
-      "floors": ["Ground", "1", "2", "3", "4"],
-      "location_aliases": ["Engineering Block", "Block B", "Engineering"],
-      "floor_aliases": {
-        "Ground": ["ground floor", "floor 0", "level 0"],
-        "1": ["first floor", "1st floor", "floor 1", "level 1"],
-        "2": ["second floor", "2nd floor", "floor 2", "level 2"],
-        "3": ["third floor", "3rd floor", "floor 3", "level 3"],
-        "4": ["fourth floor", "4th floor", "floor 4", "level 4"]
-      }
+      "floors": [
+        "Ground",
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
     },
     {
       "key": "student-center",
       "name": "Student Center",
-      "position": [8, 0, 1],
-      "size": [4.2, 2.4, 4.1],
-      "floors": ["Ground", "1", "2"],
-      "location_aliases": ["Student Center", "Cafeteria", "Canteen"],
-      "floor_aliases": {
-        "Ground": ["ground floor", "floor 0", "level 0"],
-        "1": ["first floor", "1st floor", "floor 1", "level 1"],
-        "2": ["second floor", "2nd floor", "floor 2", "level 2"]
-      }
+      "floors": [
+        "Ground",
+        "1",
+        "2"
+      ]
     },
     {
       "key": "residence",
       "name": "Residence Hall",
-      "position": [-5, 0, 3],
-      "size": [4.6, 4.8, 4.2],
-      "floors": ["Ground", "1", "2", "3", "4", "5"],
-      "location_aliases": ["Residence Hall", "Hostel", "Dormitory"],
-      "floor_aliases": {
-        "Ground": ["ground floor", "floor 0", "level 0"],
-        "1": ["first floor", "1st floor", "floor 1", "level 1"],
-        "2": ["second floor", "2nd floor", "floor 2", "level 2"],
-        "3": ["third floor", "3rd floor", "floor 3", "level 3"],
-        "4": ["fourth floor", "4th floor", "floor 4", "level 4"],
-        "5": ["fifth floor", "5th floor", "floor 5", "level 5"]
-      }
+      "floors": [
+        "Ground",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
     }
   ]
 }

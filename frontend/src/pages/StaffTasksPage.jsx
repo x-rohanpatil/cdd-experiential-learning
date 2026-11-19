@@ -96,28 +96,32 @@ function StaffTasksPage() {
           <ComplaintCard key={task.id} complaint={task}>
             {task.status !== 'Closed' && task.status !== 'Resolved' && (
               <div className="task-actions">
-                <button className="button button--secondary" disabled={busyTask === task.id} type="button" onClick={() => updateStatus(task, 'In Progress')}>Start / continue work</button>
-                <ImageUploadField
-                  id={`after-photo-${task.id}`}
-                  label="After photo"
-                  required
-                  value={photos[task.id] ?? null}
-                  onChange={(file) => setPhotos((current) => ({ ...current, [task.id]: file }))}
-                />
-                <label className="form-field">
-                  <span>What did you fix? <span className="feedback-optional">(required)</span></span>
-                  <input
-                    aria-required="true"
-                    maxLength="300"
-                    placeholder="e.g. Replaced the broken light bulb"
-                    type="text"
-                    value={notes[task.id] ?? ''}
-                    onChange={(event) => {
-                      setNotes((current) => ({ ...current, [task.id]: event.target.value }))
-                    }}
-                  />
-                </label>
-                <button className="button button--primary" disabled={busyTask === task.id} type="button" onClick={() => resolve(task)}>{busyTask === task.id ? 'Updating…' : 'Mark resolved'}</button>
+                {task.status === 'Assigned' ? (
+                  <button className="button button--secondary" disabled={busyTask === task.id} type="button" onClick={() => updateStatus(task, 'In Progress')}>{busyTask === task.id ? 'Starting…' : 'Start work'}</button>
+                ) : (
+                  <>
+                    <button className="button button--secondary" disabled={busyTask === task.id} type="button" onClick={() => updateStatus(task, 'In Progress')}>Work in progress</button>
+                    <ImageUploadField
+                      id={`after-photo-${task.id}`}
+                      label="After photo"
+                      required
+                      value={photos[task.id] ?? null}
+                      onChange={(file) => setPhotos((current) => ({ ...current, [task.id]: file }))}
+                    />
+                    <label className="form-field">
+                      <span>What did you fix? <span className="feedback-optional">(required)</span></span>
+                      <input
+                        aria-required="true"
+                        maxLength="300"
+                        placeholder="e.g. Replaced the broken light bulb"
+                        type="text"
+                        value={notes[task.id] ?? ''}
+                        onChange={(event) => setNotes((current) => ({ ...current, [task.id]: event.target.value }))}
+                      />
+                    </label>
+                    <button className="button button--primary" disabled={busyTask === task.id} type="button" onClick={() => resolve(task)}>{busyTask === task.id ? 'Updating…' : 'Mark resolved'}</button>
+                  </>
+                )}
               </div>
             )}
           </ComplaintCard>

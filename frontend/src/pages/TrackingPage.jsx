@@ -5,8 +5,15 @@ import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
 import { ComplaintCard } from '../components/ComplaintCard.jsx'
 import ComplaintFilters from '../components/ComplaintFilters.jsx'
 import { getApiErrorMessage, getStudentComplaints, verifyComplaint } from '../services/api.js'
-import { filterComplaints } from '../utils/complaints.js'
+import { ACTIVE_COMPLAINT_STATUSES, filterComplaints } from '../utils/complaints.js'
 import { EmptyIllustration, SkeletonLoader } from '../components/StateViews.jsx'
+
+const complaintViews = [
+  { id: 'all', label: 'All complaints', matches: () => true },
+  { id: 'ongoing', label: 'Ongoing', matches: (complaint) => ACTIVE_COMPLAINT_STATUSES.has(complaint.status) },
+  { id: 'resolved', label: 'Resolved', matches: (complaint) => complaint.status === 'Resolved' },
+  { id: 'closed', label: 'Closed', matches: (complaint) => complaint.status === 'Closed' },
+]
 
 function TrackingPage() {
   const auth = JSON.parse(sessionStorage.getItem('campusfix.auth') ?? '{}')
@@ -15,6 +22,7 @@ function TrackingPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('all')
+  const [view, setView] = useState('all')
   const [busyComplaint, setBusyComplaint] = useState(null)
   const [success, setSuccess] = useState('')
 
@@ -49,7 +57,8 @@ function TrackingPage() {
     }
   }
 
-  const filtered = filterComplaints(complaints, search, status)
+  const selectedView = complaintViews.find((item) => item.id === view)
+  const filtered = filterComplaints(complaints.filter(selectedView.matches), search, status)
 
   return (
     <WorkspaceLayout title="My complaints">
@@ -59,6 +68,20 @@ function TrackingPage() {
       </div>
       {error && <p className="form-message form-message--error" role="alert">{error}</p>}
       {success && <p className="form-message form-message--success" role="status">{success}</p>}
+      <div className="complaint-view-tabs" role="group" aria-label="Complaint views">
+        {complaintViews.map((item) => (
+          <button
+            aria-pressed={view === item.id}
+            className={`complaint-view-tab${view === item.id ? ' is-active' : ''}`}
+            key={item.id}
+            type="button"
+            onClick={() => setView(item.id)}
+          >
+            <span>{item.label}</span>
+            <strong>{complaints.filter(item.matches).length}</strong>
+          </button>
+        ))}
+      </div>
       <ComplaintFilters
         search={search}
         onSearchChange={setSearch}
@@ -76,7 +99,7 @@ function TrackingPage() {
         </div>
       )}
       {!isLoading && complaints.length > 0 && filtered.length === 0 && (
-        <p className="workspace-empty">No complaints match those filters.</p>
+        <p className="workspace-empty">No complaints match this view and its filters.</p>
       )}
       <div className="complaint-list">
         {filtered.map((complaint) => (

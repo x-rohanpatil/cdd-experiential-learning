@@ -32,6 +32,7 @@ function NotificationsPage() {
     try {
       await markNotificationRead(id)
       setNotifications((items) => items.map((item) => item.id === id ? { ...item, read: true } : item))
+      window.dispatchEvent(new Event('campusfix:notifications-updated'))
     } catch (requestError) {
       setError(getApiErrorMessage(requestError, 'Unable to update this notification.'))
     } finally {

@@ -6,7 +6,7 @@ import ComplaintFilters from '../components/ComplaintFilters.jsx'
 import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
 import { EmptyIllustration, SkeletonLoader } from '../components/StateViews.jsx'
 import { getApiErrorMessage, getStudentComplaints } from '../services/api.js'
-import { filterComplaints } from '../utils/complaints.js'
+import { COMPLAINT_STATUS_OPTIONS, filterComplaints } from '../utils/complaints.js'
 
 function DashboardPage() {
   const auth = JSON.parse(sessionStorage.getItem('campusfix.auth') ?? '{}')
@@ -40,7 +40,7 @@ function DashboardPage() {
 
   const filtered = filterComplaints(complaints, search, status)
   const recent = filtered.slice(0, 3)
-  const statuses = ['Reported', 'Submitted', 'Assigned', 'In Progress', 'Resolved', 'Closed']
+  const statuses = COMPLAINT_STATUS_OPTIONS
 
   return (
     <WorkspaceLayout title="Your campus, taken care of">

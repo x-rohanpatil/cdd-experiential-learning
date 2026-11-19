@@ -28,8 +28,11 @@ function getClockSnapshot() {
   return clockTimestamp
 }
 
-export function SlaBadge({ dueAt, createdAt }) {
+export function SlaBadge({ dueAt, createdAt, status }) {
   const now = useSyncExternalStore(subscribeToClock, getClockSnapshot, getClockSnapshot)
+  if (status === 'Resolved' || status === 'Closed') {
+    return <span className={`status-badge status-badge--${status.toLowerCase()}`}>{status}</span>
+  }
   if (!dueAt) return <span className="status-badge">SLA unavailable</span>
   const dueTimestamp = new Date(dueAt).getTime()
   if (!Number.isFinite(dueTimestamp)) return <span className="status-badge">SLA unavailable</span>
@@ -90,13 +93,15 @@ export function ComplaintCard({ complaint, children }) {
           <p className="eyebrow">Complaint #{complaint.id}</p>
           <h2><Link className="complaint-card__title" to={`/complaints/${complaint.id}`}>{complaint.title}</Link></h2>
         </div>
-        <SlaBadge createdAt={complaint.created_at} dueAt={complaint.due_at} />
+        <SlaBadge createdAt={complaint.created_at} dueAt={complaint.due_at} status={complaint.status} />
       </div>
       <p>{complaint.summary || complaint.description}</p>
       <div className="complaint-meta">
         <span>{complaint.category}</span>
         <span className={`priority priority--${complaint.priority}`}>{complaint.priority}</span>
-        <span className={`status-badge status-badge--${complaint.status.toLowerCase().replaceAll(' ', '-')}`}>{complaint.status}</span>
+        {!['Resolved', 'Closed'].includes(complaint.status) && (
+          <span className={`status-badge status-badge--${complaint.status.toLowerCase().replaceAll(' ', '-')}`}>{complaint.status}</span>
+        )}
         <span className="complaint-meta__location"><MapPin size={14} aria-hidden="true" />{complaint.location}</span>
       </div>
       <div className="complaint-photos">

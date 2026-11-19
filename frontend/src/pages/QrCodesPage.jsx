@@ -5,9 +5,10 @@ import WorkspaceLayout from '../components/WorkspaceLayout.jsx'
 import { EmptyIllustration, SkeletonLoader } from '../components/StateViews.jsx'
 import {
   createLocation,
-  getAdminBuildingAnalytics,
+  getAdminCampusBuildings,
   getAdminLocations,
   getApiErrorMessage,
+  updateLocation,
   updateLocationMapping,
 } from '../services/api.js'
 
@@ -62,11 +63,13 @@ function QrCodesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [savingLocationId, setSavingLocationId] = useState(null)
+  const [editingLocationId, setEditingLocationId] = useState(null)
+  const [locationDraft, setLocationDraft] = useState({ name: '', details: '' })
 
   async function loadLocations() {
     const [{ data }, { data: analytics }] = await Promise.all([
       getAdminLocations(),
-      getAdminBuildingAnalytics(),
+      getAdminCampusBuildings(),
     ])
     setLocations(data.locations)
     setBuildings(analytics.buildings.map(({ key, name: buildingName, floors }) => ({
@@ -136,6 +139,30 @@ function QrCodesPage() {
     }
   }
 
+  function beginEdit(location) {
+    setEditingLocationId(location.id)
+    setLocationDraft({ name: location.name, details: location.details || '' })
+  }
+
+  async function saveLocation(locationId) {
+    setError('')
+    setSavingLocationId(locationId)
+    try {
+      const { data } = await updateLocation(locationId, {
+        name: locationDraft.name,
+        details: locationDraft.details || null,
+      })
+      setLocations((current) => current.map((location) => (
+        location.id === locationId ? { ...location, ...data } : location
+      )))
+      setEditingLocationId(null)
+    } catch (requestError) {
+      setError(getApiErrorMessage(requestError, 'Unable to update this location.'))
+    } finally {
+      setSavingLocationId(null)
+    }
+  }
+
   function selectCreateBuilding(event) {
     setBuildingKey(event.target.value)
     setFloor('')
@@ -190,8 +217,18 @@ function QrCodesPage() {
           <article className="workspace-panel qr-card" key={location.id}>
             <div className="qr-card__body">
               <div>
-                <h2>{location.name}</h2>
-                {location.details && <p>{location.details}</p>}
+                {editingLocationId === location.id ? (
+                  <div className="location-edit-form">
+                    <label className="form-field"><span>Name</span><input maxLength="150" value={locationDraft.name} onChange={(event) => setLocationDraft((current) => ({ ...current, name: event.target.value }))} /></label>
+                    <label className="form-field"><span>Details</span><textarea maxLength="1000" value={locationDraft.details} onChange={(event) => setLocationDraft((current) => ({ ...current, details: event.target.value }))} /></label>
+                    <div className="location-edit-form__actions">
+                      <button className="button button--primary" disabled={savingLocationId === location.id || !locationDraft.name.trim()} type="button" onClick={() => saveLocation(location.id)}>{savingLocationId === location.id ? 'Saving…' : 'Save details'}</button>
+                      <button className="button button--secondary" type="button" onClick={() => setEditingLocationId(null)}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <><h2>{location.name}</h2>{location.details && <p>{location.details}</p>}</>
+                )}
                 <p className="eyebrow">Location #{location.id}</p>
               </div>
               {codes[location.id] && <img src={codes[location.id]} alt={`Report QR code for ${location.name}`} />}
@@ -204,6 +241,7 @@ function QrCodesPage() {
               onSave={saveMapping}
             />
             <div className="qr-actions">
+              {editingLocationId !== location.id && <button className="button button--secondary" type="button" onClick={() => beginEdit(location)}>Edit details</button>}
               <button className="button button--secondary" disabled={!codes[location.id]} type="button" onClick={() => download(location)}>Download PNG</button>
               <button className="button button--secondary" type="button" onClick={() => window.print()}>Print</button>
             </div>

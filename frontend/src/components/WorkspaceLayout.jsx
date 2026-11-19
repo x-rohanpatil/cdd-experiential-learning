@@ -35,11 +35,17 @@ function WorkspaceLayout({ title, children }) {
   const [notificationError, setNotificationError] = useState('')
 
   useEffect(() => {
-    if (pathname === '/notifications') return undefined
-    getNotifications()
-      .then(({ data }) => setUnreadCount(data.filter((item) => !item.read).length))
-      .catch(() => setNotificationError('Notifications are temporarily unavailable.'))
-    return undefined
+    const refreshUnread = () => {
+      getNotifications()
+        .then(({ data }) => {
+          setUnreadCount(data.filter((item) => !item.read).length)
+          setNotificationError('')
+        })
+        .catch(() => setNotificationError('Notifications are temporarily unavailable.'))
+    }
+    refreshUnread()
+    window.addEventListener('campusfix:notifications-updated', refreshUnread)
+    return () => window.removeEventListener('campusfix:notifications-updated', refreshUnread)
   }, [pathname])
 
   function signOut() {
@@ -49,7 +55,7 @@ function WorkspaceLayout({ title, children }) {
   }
 
   const roleLinks = auth?.role === 'admin'
-    ? [['/admin', 'Overview', 'overview'], ['/admin/campus-3d', 'Campus 3D', 'campus'], ['/admin/qr-codes', 'Locations', 'locations']]
+    ? [['/admin', 'Overview', 'overview'], ['/admin/qr-codes', 'Locations', 'locations']]
     : auth?.role === 'staff'
       ? [['/staff/tasks', 'My tasks', 'tasks']]
       : [['/dashboard', 'Overview', 'overview'], ['/report', 'Report issue', 'report'], ['/tracking', 'My complaints', 'complaints']]

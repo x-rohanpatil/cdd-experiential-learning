@@ -70,6 +70,19 @@ export const createComplaintWithPhoto = (studentId, complaint, photo) => {
 export const getStudentComplaints = (studentId) =>
   api.get(`/students/${studentId}/complaints`)
 
+export const updateComplaint = (complaintId, changes) =>
+  api.patch(`/complaints/${complaintId}`, changes)
+
+export const updateComplaintPhoto = (complaintId, photo, removePhoto = false) => {
+  const form = new FormData()
+  if (photo) form.append('photo', photo)
+  if (removePhoto) form.append('remove_photo', 'true')
+  return api.patch(`/complaints/${complaintId}/photo`, form)
+}
+
+export const deleteComplaint = (complaintId) =>
+  api.delete(`/complaints/${complaintId}`)
+
 export const getAdminComplaints = () => api.get('/admin/complaints')
 
 export const getComplaintActivity = (complaintId) =>
@@ -132,14 +145,17 @@ export const getLocations = () => api.get('/locations')
 
 export const getAdminLocations = () => api.get('/admin/locations')
 
-export const getAdminBuildingAnalytics = () =>
-  api.get('/admin/analytics/buildings')
+export const getAdminCampusBuildings = () =>
+  api.get('/admin/campus-buildings')
 
 export const updateLocationMapping = (locationId, mapping) =>
   api.patch(`/admin/locations/${locationId}/mapping`, mapping)
 
 export const createLocation = (location) =>
   api.post('/admin/locations', location)
+
+export const updateLocation = (locationId, location) =>
+  api.patch(`/admin/locations/${locationId}`, location)
 
 export const getComplaintPhoto = (filename) =>
   api.get(`/media/${encodeURIComponent(filename)}`, { responseType: 'blob' })
